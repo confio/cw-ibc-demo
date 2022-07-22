@@ -6,6 +6,7 @@
 
 # Build results
 target/
+debug.log
 
 # IDEs
 .vscode/
@@ -16,10 +17,10 @@ target/
 .cargo-ok
 
 # Build artifacts
-*.wasm
 hash.txt
 contracts.txt
 artifacts/
+tests/internal
 
 # code coverage
 tarpaulin-report.*
