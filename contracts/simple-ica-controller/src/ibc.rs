@@ -1,12 +1,12 @@
 use cosmwasm_std::{
     entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
-    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcOrder, IbcPacketAckMsg,
+    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
 };
 
 use crate::state::{accounts, AccountData};
 use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
+    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse, APP_ORDER,
     IBC_APP_VERSION,
 };
 
@@ -23,7 +23,7 @@ pub fn ibc_channel_open(
 ) -> StdResult<Option<Ibc3ChannelOpenResponse>> {
     let channel = msg.channel();
 
-    if channel.order != IbcOrder::Ordered {
+    if channel.order != APP_ORDER {
         return Err(StdError::generic_err("Only supports ordered channels"));
     }
     if channel.version.as_str() != IBC_APP_VERSION {
@@ -237,6 +237,7 @@ mod tests {
         MockStorage,
     };
     use cosmwasm_std::{coin, coins, BankMsg, CosmosMsg, IbcAcknowledgement, OwnedDeps};
+    use simple_ica::BAD_APP_ORDER;
 
     const CREATOR: &str = "creator";
 
@@ -252,14 +253,13 @@ mod tests {
     // connect will run through the entire handshake to set up a proper connect and
     // save the account (tested in detail in `proper_handshake_flow`)
     fn connect(mut deps: DepsMut, channel_id: &str) {
-        let handshake_open =
-            mock_ibc_channel_open_init(channel_id, IbcOrder::Ordered, IBC_APP_VERSION);
+        let handshake_open = mock_ibc_channel_open_init(channel_id, APP_ORDER, IBC_APP_VERSION);
         // first we try to open with a valid handshake
         ibc_channel_open(deps.branch(), mock_env(), handshake_open).unwrap();
 
         // then we connect (with counter-party version set)
         let handshake_connect =
-            mock_ibc_channel_connect_ack(channel_id, IbcOrder::Ordered, IBC_APP_VERSION);
+            mock_ibc_channel_connect_ack(channel_id, APP_ORDER, IBC_APP_VERSION);
         let res = ibc_channel_connect(deps.branch(), mock_env(), handshake_connect).unwrap();
 
         // this should send a WhoAmI request, which is received some blocks later
@@ -288,15 +288,13 @@ mod tests {
     fn enforce_version_in_handshake() {
         let mut deps = setup();
 
-        let wrong_order =
-            mock_ibc_channel_open_try("channel-12", IbcOrder::Unordered, IBC_APP_VERSION);
+        let wrong_order = mock_ibc_channel_open_try("channel-12", BAD_APP_ORDER, IBC_APP_VERSION);
         ibc_channel_open(deps.as_mut(), mock_env(), wrong_order).unwrap_err();
 
-        let wrong_version = mock_ibc_channel_open_try("channel-12", IbcOrder::Ordered, "reflect");
+        let wrong_version = mock_ibc_channel_open_try("channel-12", APP_ORDER, "reflect");
         ibc_channel_open(deps.as_mut(), mock_env(), wrong_version).unwrap_err();
 
-        let valid_handshake =
-            mock_ibc_channel_open_try("channel-12", IbcOrder::Ordered, IBC_APP_VERSION);
+        let valid_handshake = mock_ibc_channel_open_try("channel-12", APP_ORDER, IBC_APP_VERSION);
         ibc_channel_open(deps.as_mut(), mock_env(), valid_handshake).unwrap();
     }
 
