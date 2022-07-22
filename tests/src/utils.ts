@@ -5,9 +5,7 @@ import { fromUtf8 } from "@cosmjs/encoding";
 
 const { setupWasmClient } = testutils;
 
-export async function setupContracts(
-  contracts: Record<string, string>
-): Promise<Record<string, number>> {
+export async function setupContracts(contracts: Record<string, string>): Promise<Record<string, number>> {
   const cosmwasm = await setupWasmClient();
 
   const results: Record<string, number> = {};
@@ -16,12 +14,7 @@ export async function setupContracts(
     const path = `./testdata/${contracts[name]}`;
     console.info(`Storing ${name} from ${path}...`);
     const wasm = await readFileSync(path);
-    const receipt = await cosmwasm.sign.upload(
-      cosmwasm.senderAddress,
-      wasm,
-      "auto",
-      `Upload ${name}`
-    );
+    const receipt = await cosmwasm.sign.upload(cosmwasm.senderAddress, wasm, "auto", `Upload ${name}`);
     console.debug(`Upload ${name} with CodeID: ${receipt.codeId}`);
     results[name] = receipt.codeId;
   }
@@ -55,11 +48,7 @@ export function assertAckErrors(acks: AckWithMetadata[]) {
   }
 }
 
-export function assertPacketsFromA(
-  relay: RelayInfo,
-  count: number,
-  success: boolean
-) {
+export function assertPacketsFromA(relay: RelayInfo, count: number, success: boolean) {
   if (relay.packetsFromA !== count) {
     throw new Error(`Expected ${count} packets, got ${relay.packetsFromA}`);
   }
@@ -73,11 +62,7 @@ export function assertPacketsFromA(
   }
 }
 
-export function assertPacketsFromB(
-  relay: RelayInfo,
-  count: number,
-  success: boolean
-) {
+export function assertPacketsFromB(relay: RelayInfo, count: number, success: boolean) {
   if (relay.packetsFromB !== count) {
     throw new Error(`Expected ${count} packets, got ${relay.packetsFromB}`);
   }

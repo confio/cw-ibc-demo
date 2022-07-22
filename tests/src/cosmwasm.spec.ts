@@ -6,11 +6,7 @@ const { gaia, ics20, setup, setupWasmClient, wasmd } = testutils;
 
 // TODO: replace these with be auto-generated helpers from ts-codegen
 import { balance, init, sendTokens } from "./cw20";
-import {
-  assertPacketsFromA,
-  assertPacketsFromB,
-  setupContracts,
-} from "./utils";
+import { assertPacketsFromA, assertPacketsFromB, setupContracts } from "./utils";
 
 let codeIds: Record<string, number> = {};
 
@@ -47,13 +43,7 @@ test.serial("set up channel with ics20 contract", async (t) => {
 
   const [src, dest] = await setup(gaia, wasmd);
   const link = await Link.createWithNewConnections(src, dest);
-  await link.createChannel(
-    "A",
-    gaia.ics20Port,
-    wasmPort,
-    ics20.ordering,
-    ics20.version
-  );
+  await link.createChannel("A", gaia.ics20Port, wasmPort, ics20.ordering, ics20.version);
 });
 
 test.serial("send packets with ics20 contract", async (t) => {
@@ -98,13 +88,7 @@ test.serial("send packets with ics20 contract", async (t) => {
 
   const [src, dest] = await setup(gaia, wasmd);
   const link = await Link.createWithNewConnections(src, dest);
-  const channels = await link.createChannel(
-    "A",
-    gaia.ics20Port,
-    wasmPort,
-    ics20.ordering,
-    ics20.version
-  );
+  const channels = await link.createChannel("A", gaia.ics20Port, wasmPort, ics20.ordering, ics20.version);
 
   // send cw20 tokens to ics20 contract and create a new packet
   // (dest chain is wasmd)
@@ -112,13 +96,7 @@ test.serial("send packets with ics20 contract", async (t) => {
     channel: channels.dest.channelId,
     remote_address: src.senderAddress,
   });
-  await cosmwasm.sign.execute(
-    cosmwasm.senderAddress,
-    cw20Addr,
-    sendMsg,
-    "auto",
-    "Send CW20 tokens via ICS20"
-  );
+  await cosmwasm.sign.execute(cosmwasm.senderAddress, cw20Addr, sendMsg, "auto", "Send CW20 tokens via ICS20");
 
   // let's see if the balance went down
   bal = await balance(cosmwasm, cw20Addr);
@@ -143,13 +121,7 @@ test.serial("send packets with ics20 contract", async (t) => {
 
   // send this token back over the channel
   const timeoutHeight = await dest.timeoutHeight(500);
-  await src.transferTokens(
-    channels.src.portId,
-    channels.src.channelId,
-    ibcCoin,
-    dest.senderAddress,
-    timeoutHeight
-  );
+  await src.transferTokens(channels.src.portId, channels.src.channelId, ibcCoin, dest.senderAddress, timeoutHeight);
   await src.waitOneBlock();
 
   // easy way to move all packets
@@ -168,13 +140,7 @@ test.serial("send packets with ics20 contract", async (t) => {
     denom: "uatom",
     amount: "111111",
   };
-  await src.transferTokens(
-    channels.src.portId,
-    channels.src.channelId,
-    nativeCoin,
-    dest.senderAddress,
-    timeoutHeight2
-  );
+  await src.transferTokens(channels.src.portId, channels.src.channelId, nativeCoin, dest.senderAddress, timeoutHeight2);
   await src.waitOneBlock();
 
   // relay and verify this fails (as it should)
