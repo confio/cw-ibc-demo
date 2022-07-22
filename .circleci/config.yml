@@ -154,7 +154,7 @@ jobs:
   # This runs one time on the top level to ensure all contracts compile properly into wasm.
   # We don't run the wasm build per contract build, and then reuse a lot of the same dependencies, so this speeds up CI time
   # for all the other tests.
-  # We also sanity-check the resultant wasm files.
+  # Resulting wasm files are stored to the workspace, so they can be used by the integration test downstream
   wasm-build:
     docker:
       - image: rust:1.58.1
@@ -178,23 +178,11 @@ jobs:
               echo "Compiling `basename $C`..."
               (cd $C && RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked)
             done
-      - run:
-          name: Install check_contract
-          # Uses --debug for compilation speed
-          command: cargo install --debug --version 1.0.0 --features iterator --example check_contract -- cosmwasm-vm
       - save_cache:
           paths:
             - /usr/local/cargo/registry
             - target
           key: cargocache-wasm-rust:1.58.1-{{ checksum "~/project/Cargo.lock" }}
-      - run:
-          name: Check wasm contracts
-          command: |
-            for W in ./target/wasm32-unknown-unknown/release/*.wasm
-            do
-              echo -n "Checking `basename $W`... "
-              check_contract $W
-            done
       - persist_to_workspace:
           name: Save wasm contracts for integration test usage
           root: ./target/wasm32-unknown-unknown/release

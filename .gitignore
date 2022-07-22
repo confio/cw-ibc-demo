@@ -20,6 +20,7 @@ target/
 hash.txt
 contracts.txt
 artifacts/
+tests/internal
 
 # code coverage
 tarpaulin-report.*
