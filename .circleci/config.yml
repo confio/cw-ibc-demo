@@ -13,11 +13,9 @@ workflows:
       - lint
       - wasm-build
       - ts-build
-      # this is just for testing now
-      - build_and_upload_contracts
       - integration:
           requires:
-#            - wasm-build
+            - wasm-build
             - ts-build
             - contract_simple_ica_controller
             - contract_simple_ica_host
@@ -178,7 +176,7 @@ jobs:
             for C in ./contracts/*/
             do
               echo "Compiling `basename $C`..."
-              (cd $C && cargo build --release --target wasm32-unknown-unknown --locked)
+              (cd $C && RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked)
             done
       - run:
           name: Install check_contract
@@ -197,6 +195,12 @@ jobs:
               echo -n "Checking `basename $W`... "
               check_contract $W
             done
+      - persist_to_workspace:
+          name: Save wasm contracts for integration test usage
+          root: ./target/wasm32-unknown-unknown/release
+          paths:
+            - simple_ica_controller.wasm
+            - simple_ica_host.wasm
 
   ts-build:
     docker:
@@ -237,7 +241,7 @@ jobs:
           background: true
       - run: # start early for less wait time below
           name: Start osmosisd
-          command: ../ci-scripts/osmosisd/start.sh
+          command: ../ci-scripts/osmosis/start.sh
           background: true
       - run:
           # TODO: check if still needed with 20.04
@@ -274,6 +278,10 @@ jobs:
             timeout 60 bash -c "until curl -s http://localhost:26653/status > /dev/null; do sleep 0.5; done"
             sleep 1
             echo "Chains up and running!"
+      - attach_workspace:
+          at: internal
+      - run:
+          command: ls -l internal
 #      - run:
 #          command: npm run test
 # TODO: get this working
@@ -281,7 +289,7 @@ jobs:
           name: Stop chains
           command: |
             ../ci-scripts/wasmd/stop.sh
-            ../ci-scripts/osmosisd/stop.sh
+            ../ci-scripts/osmosis/stop.sh
 
 
   # This job roughly follows the instructions from https://circleci.com/blog/publishing-to-github-releases-via-circleci/
@@ -317,18 +325,18 @@ jobs:
           command: |
             ls -l artifacts
             cat artifacts/checksums.txt
-#      - run:
-#          name: Publish artifacts on GitHub
-#          command: |
-#            TAG="$CIRCLE_TAG"
-#            TITLE="$TAG"
-#            BODY="Attached there are some build artifacts generated at this tag. Those are for development purposes only! Please use crates.io to find the packages of this release."
-#            ghr -t "$GITHUB_TOKEN" \
-#              -u "$CIRCLE_PROJECT_USERNAME" -r "$CIRCLE_PROJECT_REPONAME" \
-#              -c "$CIRCLE_SHA1" \
-#              -n "$TITLE" -b "$BODY" \
-#              -replace \
-#              "$TAG" ./artifacts/
+      - run:
+          name: Publish artifacts on GitHub
+          command: |
+            TAG="$CIRCLE_TAG"
+            TITLE="$TAG"
+            BODY="Attached there are some build artifacts generated at this tag. Those are for development purposes only! Please use crates.io to find the packages of this release."
+            ghr -t "$GITHUB_TOKEN" \
+              -u "$CIRCLE_PROJECT_USERNAME" -r "$CIRCLE_PROJECT_REPONAME" \
+              -c "$CIRCLE_SHA1" \
+              -n "$TITLE" -b "$BODY" \
+              -replace \
+              "$TAG" ./artifacts/
 
   build_and_upload_schemas:
     docker:
