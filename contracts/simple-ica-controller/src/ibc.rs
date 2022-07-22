@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, DepsMut, Env, IbcBasicResponse, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcOrder, IbcPacketAckMsg,
+    entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
+    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcOrder, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
 };
 
@@ -17,7 +17,11 @@ pub const PACKET_LIFETIME: u64 = 60 * 60;
 
 #[entry_point]
 /// enforces ordering and versioing constraints
-pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> StdResult<()> {
+pub fn ibc_channel_open(
+    _deps: DepsMut,
+    _env: Env,
+    msg: IbcChannelOpenMsg,
+) -> StdResult<Option<Ibc3ChannelOpenResponse>> {
     let channel = msg.channel();
 
     if channel.order != IbcOrder::Ordered {
@@ -39,7 +43,7 @@ pub fn ibc_channel_open(_deps: DepsMut, _env: Env, msg: IbcChannelOpenMsg) -> St
         }
     }
 
-    Ok(())
+    Ok(None)
 }
 
 #[entry_point]
