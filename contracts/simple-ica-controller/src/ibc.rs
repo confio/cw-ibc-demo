@@ -4,12 +4,11 @@ use cosmwasm_std::{
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
 };
 
-use crate::ibc_msg::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
-};
 use crate::state::{accounts, AccountData};
-
-pub const IBC_APP_VERSION: &str = "ibc-reflect-v1";
+use simple_ica::{
+    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
+    IBC_APP_VERSION,
+};
 
 // TODO: make configurable?
 /// packets live one hour

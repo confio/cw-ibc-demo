@@ -509,6 +509,12 @@ dependencies = [
 [[package]]
 name = "simple-ica"
 version = "0.1.0"
+dependencies = [
+ "cosmwasm-schema",
+ "cosmwasm-std",
+ "schemars",
+ "serde",
+]
 
 [[package]]
 name = "simple-ica-controller"
@@ -519,6 +525,7 @@ dependencies = [
  "cosmwasm-storage",
  "schemars",
  "serde",
+ "simple-ica",
 ]
 
 [[package]]
@@ -530,6 +537,7 @@ dependencies = [
  "cosmwasm-storage",
  "schemars",
  "serde",
+ "simple-ica",
 ]
 
 [[package]]

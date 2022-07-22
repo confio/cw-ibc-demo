@@ -6,10 +6,12 @@ use cosmwasm_std::{
     QueryResponse, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, SubMsgResult,
     WasmMsg,
 };
+use simple_ica::{
+    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
+};
 
 use crate::msg::{
-    AccountInfo, AccountResponse, AcknowledgementMsg, BalancesResponse, DispatchResponse,
-    InstantiateMsg, ListAccountsResponse, PacketMsg, QueryMsg, ReflectExecuteMsg, WhoAmIResponse,
+    AccountInfo, AccountResponse, InstantiateMsg, ListAccountsResponse, QueryMsg, ReflectExecuteMsg,
 };
 use crate::state::{accounts, accounts_read, config, pending_channel, Config};
 
@@ -576,7 +578,7 @@ mod tests {
         assert_eq!(0, res.messages.len());
         // acknowledgement is an error
         let ack: AcknowledgementMsg<DispatchResponse> = from_slice(&res.acknowledgement).unwrap();
-        assert_eq!(ack.unwrap_err(), "invalid packet: Error parsing into type simple_ica_host::msg::PacketMsg: unknown variant `reflect_code_id`, expected one of `dispatch`, `who_am_i`, `balances`");
+        assert_eq!(ack.unwrap_err(), "invalid packet: Error parsing into type simple_ica::ibc_msg::PacketMsg: unknown variant `reflect_code_id`, expected one of `dispatch`, `who_am_i`, `balances`");
     }
 
     #[test]

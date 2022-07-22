@@ -1,8 +1,7 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
-}
+mod ibc_msg;
+
+pub use crate::ibc_msg::{
+    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
+};
+
+pub const IBC_APP_VERSION: &str = "simple-ica-v1";

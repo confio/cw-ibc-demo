@@ -2,9 +2,9 @@ use cosmwasm_std::{
     entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
     QueryResponse, Response, StdError, StdResult,
 };
+use simple_ica::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
-use crate::ibc_msg::PacketMsg;
 use crate::msg::{
     AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse,
     QueryMsg,
