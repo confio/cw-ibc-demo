@@ -40,14 +40,14 @@ and running on your local machine. If you don't, please do that first before run
 Terminal 1:
 
 ```
-cd scripts/gaia
+cd scripts/wasmd
 ./start.sh
 ```
 
 Terminal 2:
 
 ```
-cd scripts/wasmd
+cd scripts/osmosisd
 ./start.sh
 ```
 
@@ -64,6 +64,6 @@ You may run and re-run tests many times. When you are done with it and want to f
 (stop running two blockchains in the background), you need to run these commands to stop them properly:
 
 ```
-./scripts/gaia/stop.sh
 ./scripts/wasmd/stop.sh
+./scripts/osmosisd/stop.sh
 ```
