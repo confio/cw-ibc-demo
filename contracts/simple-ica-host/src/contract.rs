@@ -14,7 +14,7 @@ use simple_ica::{
 use crate::msg::{
     AccountInfo, AccountResponse, InstantiateMsg, ListAccountsResponse, QueryMsg, ReflectExecuteMsg,
 };
-use crate::state::{accounts, accounts_read, config, pending_channel, Config};
+use crate::state::{Config, ACCOUNTS, CONFIG, PENDING};
 
 pub const RECEIVE_DISPATCH_ID: u64 = 1234;
 pub const INIT_CALLBACK_ID: u64 = 7890;
@@ -30,7 +30,7 @@ pub fn instantiate(
     let cfg = Config {
         reflect_code_id: msg.reflect_code_id,
     };
-    config(deps.storage).save(&cfg)?;
+    CONFIG.save(deps.storage, &cfg)?;
 
     Ok(Response::new().add_attribute("action", "instantiate"))
 }
@@ -61,8 +61,8 @@ fn parse_contract_from_event(events: Vec<Event>) -> Option<String> {
 
 pub fn handle_init_callback(deps: DepsMut, response: SubMsgResponse) -> StdResult<Response> {
     // we use storage to pass info from the caller to the reply
-    let id = pending_channel(deps.storage).load()?;
-    pending_channel(deps.storage).remove();
+    let id = PENDING.load(deps.storage)?;
+    PENDING.remove(deps.storage);
 
     // parse contract info from events
     let contract_addr = match parse_contract_from_event(response.events) {
@@ -74,7 +74,7 @@ pub fn handle_init_callback(deps: DepsMut, response: SubMsgResponse) -> StdResul
 
     // store id -> contract_addr if it is empty
     // id comes from: `let chan_id = msg.endpoint.channel_id;` in `ibc_channel_connect`
-    accounts(deps.storage).update(id.as_bytes(), |val| -> StdResult<_> {
+    ACCOUNTS.update(deps.storage, &id, |val| -> StdResult<_> {
         match val {
             Some(_) => Err(StdError::generic_err(
                 "Cannot register over an existing channel",
@@ -95,26 +95,24 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
 }
 
 pub fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
-    let account = accounts_read(deps.storage).load(channel_id.as_bytes())?;
+    let account = ACCOUNTS.load(deps.storage, &channel_id)?;
     Ok(AccountResponse {
         account: Some(account.into()),
     })
 }
 
 pub fn query_list_accounts(deps: Deps) -> StdResult<ListAccountsResponse> {
-    let accounts: StdResult<Vec<_>> = accounts_read(deps.storage)
-        .range(None, None, Order::Ascending)
+    let accounts = ACCOUNTS
+        .range(deps.storage, None, None, Order::Ascending)
         .map(|item| {
-            let (key, account) = item?;
+            let (channel_id, account) = item?;
             Ok(AccountInfo {
                 account: account.into(),
-                channel_id: String::from_utf8(key)?,
+                channel_id,
             })
         })
-        .collect();
-    Ok(ListAccountsResponse {
-        accounts: accounts?,
-    })
+        .collect::<StdResult<_>>()?;
+    Ok(ListAccountsResponse { accounts })
 }
 
 #[entry_point]
@@ -155,7 +153,7 @@ pub fn ibc_channel_connect(
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
-    let cfg = config(deps.storage).load()?;
+    let cfg = CONFIG.load(deps.storage)?;
     let chan_id = &channel.endpoint.channel_id;
 
     let init_msg = cw1_whitelist::msg::InstantiateMsg {
@@ -172,7 +170,7 @@ pub fn ibc_channel_connect(
     let msg = SubMsg::reply_on_success(msg, INIT_CALLBACK_ID);
 
     // store the channel id for the reply handler
-    pending_channel(deps.storage).save(chan_id)?;
+    PENDING.save(deps.storage, &chan_id)?;
 
     Ok(IbcBasicResponse::new()
         .add_submessage(msg)
@@ -192,8 +190,8 @@ pub fn ibc_channel_close(
     let channel = msg.channel();
     // get contract address and remove lookup
     let channel_id = channel.endpoint.channel_id.as_str();
-    let reflect_addr = accounts(deps.storage).load(channel_id.as_bytes())?;
-    accounts(deps.storage).remove(channel_id.as_bytes());
+    let reflect_addr = ACCOUNTS.load(deps.storage, &channel_id)?;
+    ACCOUNTS.remove(deps.storage, &channel_id);
 
     // transfer current balance if any (steal the money)
     let amount = deps.querier.query_all_balances(&reflect_addr)?;
@@ -264,7 +262,7 @@ pub fn ibc_packet_receive(
 
 // processes PacketMsg::WhoAmI variant
 fn receive_who_am_i(deps: DepsMut, caller: String) -> StdResult<IbcReceiveResponse> {
-    let account = accounts(deps.storage).load(caller.as_bytes())?;
+    let account = ACCOUNTS.load(deps.storage, &caller)?;
     let response = WhoAmIResponse {
         account: account.into(),
     };
@@ -277,7 +275,7 @@ fn receive_who_am_i(deps: DepsMut, caller: String) -> StdResult<IbcReceiveRespon
 
 // processes PacketMsg::Balances variant
 fn receive_balances(deps: DepsMut, caller: String) -> StdResult<IbcReceiveResponse> {
-    let account = accounts(deps.storage).load(caller.as_bytes())?;
+    let account = ACCOUNTS.load(deps.storage, &caller)?;
     let balances = deps.querier.query_all_balances(&account)?;
     let response = BalancesResponse {
         account: account.into(),
@@ -297,7 +295,7 @@ fn receive_dispatch(
     msgs: Vec<CosmosMsg>,
 ) -> StdResult<IbcReceiveResponse> {
     // what is the reflect contract here
-    let reflect_addr = accounts(deps.storage).load(caller.as_bytes())?;
+    let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
 
     // let them know we're fine
     let acknowledgement = to_binary(&AcknowledgementMsg::<DispatchResponse>::Ok(()))?;
