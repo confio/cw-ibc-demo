@@ -170,7 +170,7 @@ pub fn ibc_channel_connect(
     let msg = SubMsg::reply_on_success(msg, INIT_CALLBACK_ID);
 
     // store the channel id for the reply handler
-    PENDING.save(deps.storage, &chan_id)?;
+    PENDING.save(deps.storage, chan_id)?;
 
     Ok(IbcBasicResponse::new()
         .add_submessage(msg)
@@ -190,8 +190,8 @@ pub fn ibc_channel_close(
     let channel = msg.channel();
     // get contract address and remove lookup
     let channel_id = channel.endpoint.channel_id.as_str();
-    let reflect_addr = ACCOUNTS.load(deps.storage, &channel_id)?;
-    ACCOUNTS.remove(deps.storage, &channel_id);
+    let reflect_addr = ACCOUNTS.load(deps.storage, channel_id)?;
+    ACCOUNTS.remove(deps.storage, channel_id);
 
     // transfer current balance if any (steal the money)
     let amount = deps.querier.query_all_balances(&reflect_addr)?;
