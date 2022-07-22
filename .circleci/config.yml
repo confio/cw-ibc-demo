@@ -265,7 +265,9 @@ jobs:
       - run:
           command: ls -l internal
       - run:
-          command: npm run test
+          command: npm run build
+      - run:
+          command: npm run test:unit
       - save_cache:
           name: Save Npm Package Cache
           key: v1-packages-{{ checksum "package-lock.json" }}
