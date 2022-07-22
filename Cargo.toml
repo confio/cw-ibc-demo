@@ -1,11 +1,11 @@
 [workspace]
 members = ["packages/*", "contracts/*"]
 
-[profile.release.package.cw1-subkeys]
+[profile.release.package.simple-ica-controller]
 codegen-units = 1
 incremental = false
 
-[profile.release.package.cw1-whitelist]
+[profile.release.package.simple-ica-host]
 codegen-units = 1
 incremental = false
 
