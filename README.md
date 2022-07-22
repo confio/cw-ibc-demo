@@ -1,6 +1,6 @@
 # CosmWasm IBC Demo
 
-*Example IBC enabled contracts along with full stack integration tests*
+_Example IBC enabled contracts along with full stack integration tests_
 
 This package demos how to write a simple pair of IBC-enabled contracts
 that speak to each other. It includes unit tests on each contract
