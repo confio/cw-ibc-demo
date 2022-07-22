@@ -251,12 +251,6 @@ jobs:
           keys:
             - v1-packages-{{ checksum "package-lock.json" }}
       - run: npm install --frozen-lockfile
-      - run: npm run build
-      - save_cache:
-          name: Save Npm Package Cache
-          key: v1-packages-{{ checksum "package-lock.json" }}
-          paths:
-            - node_modules
       - run:
           name: Wait for chains to start up
           command: |
@@ -270,9 +264,13 @@ jobs:
           at: internal
       - run:
           command: ls -l internal
-#      - run:
-#          command: npm run test
-# TODO: get this working
+      - run:
+          command: npm run test
+      - save_cache:
+          name: Save Npm Package Cache
+          key: v1-packages-{{ checksum "package-lock.json" }}
+          paths:
+            - node_modules
       - run:
           name: Stop chains
           command: |
