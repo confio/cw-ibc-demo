@@ -1,51 +1,78 @@
 import { Link, testutils } from "@confio/relayer";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
+import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
 
-const { gaia, ics20, setup, setupWasmClient, wasmd } = testutils;
+const { osmosis: oldOsmo, setup, wasmd } = testutils;
+
+const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
 // TODO: replace these with be auto-generated helpers from ts-codegen
-import { balance, init, sendTokens } from "./cw20";
-import { assertPacketsFromA, assertPacketsFromB, setupContracts } from "./utils";
+// import { balance, init, sendTokens } from "./cw20";
+// import { assertPacketsFromA, assertPacketsFromB, setupContracts } from "./utils";
+import { setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
 
-let codeIds: Record<string, number> = {};
+let wasmIds: Record<string, number> = {};
+let osmosisIds: Record<string, number> = {};
 
 test.before(async (t) => {
-  const contracts = {
-    cw20: "cw20_base.wasm",
-    ics20: "cw20_ics20.wasm",
+  console.debug("Upload contracts to wasmd...");
+  const wasmContracts = {
+    controller: "./internal/simple_ica_controller.wasm",
   };
-  codeIds = await setupContracts(contracts);
+  const wasmSign = await setupWasmClient();
+  wasmIds = await setupContracts(wasmSign, wasmContracts);
+
+  console.debug("Upload contracts to osmosis...");
+  const osmosisContracts = {
+    host: "./internal/simple_ica_host.wasm",
+    whitelist: "./external/cw1_whitelist.wasm",
+  };
+  const osmosisSign = await setupOsmosisClient();
+  osmosisIds = await setupContracts(osmosisSign, osmosisContracts);
+
   t.pass();
 });
 
 test.serial("set up channel with ics20 contract", async (t) => {
+  // instantiate ica controller on wasmd
   const cosmwasm = await setupWasmClient();
-
-  // instantiate ics20
-  const ics20Msg = {
-    default_timeout: 3600,
-    gov_contract: cosmwasm.senderAddress,
-    allowlist: [],
-  };
-  const { contractAddress: ics20Addr } = await cosmwasm.sign.instantiate(
+  const initController = {};
+  const { contractAddress: controllerAddr } = await cosmwasm.sign.instantiate(
     cosmwasm.senderAddress,
-    codeIds.ics20,
-    ics20Msg,
-    "ICS",
+    wasmIds.controller,
+    initController,
+    "simple controller",
     "auto"
   );
-  t.truthy(ics20Addr);
+  t.truthy(controllerAddr);
+  const { ibcPortId: controllerPort } = await cosmwasm.sign.getContract(controllerAddr);
+  console.log(`Controller Port: ${controllerPort}`);
+  assert(controllerPort);
 
-  const { ibcPortId: wasmPort } = await cosmwasm.sign.getContract(ics20Addr);
-  console.log(`Ibc Port: ${wasmPort}`);
-  assert(wasmPort);
+  // instantiate ica host on osmosis
+  const osmo = await setupOsmosisClient();
+  const initHost = {
+    reflect_code_id: osmosisIds.whitelist,
+  };
+  const { contractAddress: hostAddr } = await osmo.sign.instantiate(
+    osmo.senderAddress,
+    osmosisIds.host,
+    initHost,
+    "simple host",
+    "auto"
+  );
+  t.truthy(hostAddr);
+  const { ibcPortId: hostPort } = await osmo.sign.getContract(hostAddr);
+  console.log(`Host Port: ${hostPort}`);
+  assert(hostPort);
 
-  const [src, dest] = await setup(gaia, wasmd);
+  const [src, dest] = await setup(wasmd, osmosis);
   const link = await Link.createWithNewConnections(src, dest);
-  await link.createChannel("A", gaia.ics20Port, wasmPort, ics20.ordering, ics20.version);
+  await link.createChannel("A", controllerPort, hostPort, Order.ORDER_UNORDERED, "simple-ica-v1");
 });
 
+/*
 test.serial("send packets with ics20 contract", async (t) => {
   const cosmwasm = await setupWasmClient();
 
@@ -147,3 +174,4 @@ test.serial("send packets with ics20 contract", async (t) => {
   info = await link.relayAll();
   assertPacketsFromA(info, 1, false);
 });
+*/

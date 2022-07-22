@@ -6,6 +6,7 @@
 
 # Build results
 target/
+debug.log
 
 # IDEs
 .vscode/

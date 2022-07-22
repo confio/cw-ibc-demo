@@ -1,17 +1,20 @@
 import { readFileSync } from "fs";
 
-import { AckWithMetadata, RelayInfo, testutils } from "@confio/relayer";
+import { AckWithMetadata, CosmWasmSigner, RelayInfo, testutils } from "@confio/relayer";
 import { fromUtf8 } from "@cosmjs/encoding";
 
-const { setupWasmClient } = testutils;
+const { fundAccount, generateMnemonic, osmosis: oldOsmo, signingCosmWasmClient, wasmd } = testutils;
 
-export async function setupContracts(contracts: Record<string, string>): Promise<Record<string, number>> {
-  const cosmwasm = await setupWasmClient();
+const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
+export async function setupContracts(
+  cosmwasm: CosmWasmSigner,
+  contracts: Record<string, string>
+): Promise<Record<string, number>> {
   const results: Record<string, number> = {};
 
   for (const name in contracts) {
-    const path = `./testdata/${contracts[name]}`;
+    const path = contracts[name];
     console.info(`Storing ${name} from ${path}...`);
     const wasm = await readFileSync(path);
     const receipt = await cosmwasm.sign.upload(cosmwasm.senderAddress, wasm, "auto", `Upload ${name}`);
@@ -20,6 +23,24 @@ export async function setupContracts(contracts: Record<string, string>): Promise
   }
 
   return results;
+}
+
+// This creates a client for the CosmWasm chain, that can interact with contracts
+export async function setupWasmClient(): Promise<CosmWasmSigner> {
+  // create apps and fund an account
+  const mnemonic = generateMnemonic();
+  const cosmwasm = await signingCosmWasmClient(wasmd, mnemonic);
+  await fundAccount(wasmd, cosmwasm.senderAddress, "4000000");
+  return cosmwasm;
+}
+
+// This creates a client for the CosmWasm chain, that can interact with contracts
+export async function setupOsmosisClient(): Promise<CosmWasmSigner> {
+  // create apps and fund an account
+  const mnemonic = generateMnemonic();
+  const cosmwasm = await signingCosmWasmClient(osmosis, mnemonic);
+  await fundAccount(osmosis, cosmwasm.senderAddress, "4000000");
+  return cosmwasm;
 }
 
 // throws error if not all are success
