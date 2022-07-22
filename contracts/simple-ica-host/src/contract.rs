@@ -151,17 +151,21 @@ pub fn ibc_channel_open(
 /// once it's established, we create the reflect contract
 pub fn ibc_channel_connect(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
     let cfg = config(deps.storage).load()?;
     let chan_id = &channel.endpoint.channel_id;
 
+    let init_msg = cw1_whitelist::msg::InstantiateMsg {
+        admins: vec![env.contract.address.into_string()],
+        mutable: false,
+    };
     let msg = WasmMsg::Instantiate {
         admin: None,
         code_id: cfg.reflect_code_id,
-        msg: b"{}".into(),
+        msg: to_binary(&init_msg)?,
         funds: vec![],
         label: format!("ibc-reflect-{}", chan_id),
     };
@@ -298,7 +302,7 @@ fn receive_dispatch(
     // let them know we're fine
     let acknowledgement = to_binary(&AcknowledgementMsg::<DispatchResponse>::Ok(()))?;
     // create the message to re-dispatch to the reflect contract
-    let reflect_msg = ReflectExecuteMsg::ReflectMsg { msgs };
+    let reflect_msg = cw1_whitelist::msg::ExecuteMsg::Execute { msgs };
     let wasm_msg = wasm_execute(reflect_addr, &reflect_msg, vec![])?;
 
     // we wrap it in a submessage to properly report errors
@@ -554,10 +558,10 @@ mod tests {
             assert_eq!(account, contract_addr.as_str());
             assert_eq!(0, funds.len());
             // parse the message - should callback with proper channel_id
-            let rmsg: ReflectExecuteMsg = from_slice(msg).unwrap();
+            let rmsg: cw1_whitelist::msg::ExecuteMsg = from_slice(msg).unwrap();
             assert_eq!(
                 rmsg,
-                ReflectExecuteMsg::ReflectMsg {
+                cw1_whitelist::msg::ExecuteMsg::Execute {
                     msgs: msgs_to_dispatch
                 }
             );
