@@ -54,14 +54,35 @@ export async function checkRemoteBalance(
   return res;
 }
 
-// export function showAccou(targetAddr: string, amount: string, msg: Record<string, unknown>): Record<string, unknown> {
-//   const encoded = toBase64(toUtf8(JSON.stringify(msg)));
-//   const sendMsg = {
-//     send: {
-//       contract: targetAddr,
-//       amount,
-//       msg: encoded,
-//     },
-//   };
-//   return sendMsg;
-// }
+export function remoteBankSend(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  to_address: string,
+  amount: Coin[]
+): Promise<ExecuteResult> {
+  const msgs = [
+    {
+      bank: {
+        send: { to_address, amount },
+      },
+    },
+  ];
+  return remoteCall(cosmwasm, controllerAddr, channelId, msgs);
+}
+
+export async function remoteCall(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  msgs: unknown[]
+): Promise<ExecuteResult> {
+  const msg = {
+    send_msgs: {
+      channel_id: channelId,
+      msgs,
+    },
+  };
+  const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto");
+  return res;
+}

@@ -3,11 +3,10 @@ import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
 
-const { osmosis: oldOsmo, setup, wasmd } = testutils;
+const { osmosis: oldOsmo, setup, wasmd, randomAddress } = testutils;
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
-// TODO: replace these with be auto-generated helpers from ts-codegen
-import { checkRemoteBalance, fundRemoteAccount, listAccounts, showAccount } from "./controller";
+import { checkRemoteBalance, fundRemoteAccount, listAccounts, remoteBankSend, showAccount } from "./controller";
 import { assertPacketsFromA, IbcVersion, setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
 
 let wasmIds: Record<string, number> = {};
@@ -46,7 +45,7 @@ test.skip("set up channel with ics20 contract", async (t) => {
   );
   t.truthy(wasmCont);
   const { ibcPortId: controllerPort } = await wasmClient.sign.getContract(wasmCont);
-  console.log(`Controller Port: ${controllerPort}`);
+  t.log(`Controller Port: ${controllerPort}`);
   assert(controllerPort);
 
   // instantiate ica host on osmosis
@@ -63,7 +62,7 @@ test.skip("set up channel with ics20 contract", async (t) => {
   );
   t.truthy(osmoHost);
   const { ibcPortId: hostPort } = await osmoClient.sign.getContract(osmoHost);
-  console.log(`Host Port: ${hostPort}`);
+  t.log(`Host Port: ${hostPort}`);
   assert(hostPort);
 
   const [src, dest] = await setup(wasmd, osmosis);
@@ -134,7 +133,7 @@ async function demoSetup(): Promise<SetupInfo> {
   };
 }
 
-test.serial("connect account and send tokens", async (t) => {
+test.skip("connect account and send tokens over", async (t) => {
   const { wasmClient, wasmController, link, ics20 } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
@@ -183,110 +182,41 @@ test.serial("connect account and send tokens", async (t) => {
   const remoteAmt = account.remote_balance[0];
   const remoteDenom = remoteAmt.denom;
   t.log(remoteDenom);
-
-  // Finally, we use an simple-ica method to send this back
 });
 
-/*
-test.serial("send packets with ics20 contract", async (t) => {
-  const cosmwasm = await setupWasmClient();
+test.serial("control action on remote chain", async (t) => {
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
 
-  // instantiate cw20
-  const initMsg = init(cosmwasm.senderAddress, "CASH", "123456789000");
-  const { contractAddress: cw20Addr } = await cosmwasm.sign.instantiate(
-    cosmwasm.senderAddress,
-    codeIds.cw20,
-    initMsg,
-    "CASH",
-    "auto"
-  );
-  t.truthy(cw20Addr);
-  let bal = await balance(cosmwasm, cw20Addr);
-  t.is("123456789000", bal);
-
-  // instantiate ics20
-  const ics20Msg = {
-    default_timeout: 3600,
-    gov_contract: cosmwasm.senderAddress,
-    allowlist: [
-      {
-        contract: cw20Addr,
-        gas_limit: 250000,
-      },
-    ],
-  };
-  const { contractAddress: ics20Addr } = await cosmwasm.sign.instantiate(
-    cosmwasm.senderAddress,
-    codeIds.ics20,
-    ics20Msg,
-    "ICSX",
-    "auto"
-  );
-  t.truthy(ics20Addr);
-
-  const { ibcPortId: wasmPort } = await cosmwasm.sign.getContract(ics20Addr);
-  console.log(`Ibc Port: ${wasmPort}`);
-  assert(wasmPort);
-
-  const [src, dest] = await setup(gaia, wasmd);
-  const link = await Link.createWithNewConnections(src, dest);
-  const channels = await link.createChannel("A", gaia.ics20Port, wasmPort, ics20.ordering, ics20.version);
-
-  // send cw20 tokens to ics20 contract and create a new packet
-  // (dest chain is wasmd)
-  const sendMsg = sendTokens(ics20Addr, "456789000", {
-    channel: channels.dest.channelId,
-    remote_address: src.senderAddress,
-  });
-  await cosmwasm.sign.execute(cosmwasm.senderAddress, cw20Addr, sendMsg, "auto", "Send CW20 tokens via ICS20");
-
-  // let's see if the balance went down
-  bal = await balance(cosmwasm, cw20Addr);
-  t.is("123000000000", bal);
-
-  // check source balance
-  const preBalance = await src.sign.getAllBalances(src.senderAddress);
-  t.is(1, preBalance.length);
-  t.is("uatom", preBalance[0].denom);
-
-  // easy way to move all packets and verify the results
+  // there is an initial packet to relay for the whoami run
   let info = await link.relayAll();
-  assertPacketsFromB(info, 1, true);
+  assertPacketsFromA(info, 1, true);
 
-  // check source balances increased
-  const relayedBalance = await src.sign.getAllBalances(src.senderAddress);
-  t.is(2, relayedBalance.length);
-  const ibcCoin = relayedBalance.find((d) => d.denom !== "uatom");
-  assert(ibcCoin);
-  t.is("456789000", ibcCoin.amount);
-  console.log(ibcCoin);
+  // get the account info
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  const { remote_addr: remoteAddr, channel_id: channelId } = accounts[0];
+  assert(remoteAddr);
+  assert(channelId);
 
-  // send this token back over the channel
-  const timeoutHeight = await dest.timeoutHeight(500);
-  await src.transferTokens(channels.src.portId, channels.src.channelId, ibcCoin, dest.senderAddress, timeoutHeight);
-  await src.waitOneBlock();
+  // send some osmo to the remote address (using another funded account there)
+  const initFunds = { amount: "2500600", denom: osmosis.denomFee };
+  await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
 
-  // easy way to move all packets
+  // make a new empty account on osmosis
+  const emptyAddr = randomAddress(osmosis.prefix);
+  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(noFunds.amount, "0");
+
+  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
+  const sendFunds = { amount: "1200300", denom: osmosis.denomFee };
+  await remoteBankSend(wasmClient, wasmController, channelId, emptyAddr, [sendFunds]);
+
+  // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // extra check just because... not really needed
-  assertPacketsFromB(info, 0, true);
+  // Note: rethink the `{ ok: null }` message we get back on success
 
-  // balance updated on recipient
-  const gotBal = await balance(cosmwasm, cw20Addr, dest.senderAddress);
-  t.is(gotBal, "456789000");
-
-  // send native token over channel (from dest -> cosmwasm chain)
-  const timeoutHeight2 = await dest.timeoutHeight(500);
-  const nativeCoin = {
-    denom: "uatom",
-    amount: "111111",
-  };
-  await src.transferTokens(channels.src.portId, channels.src.channelId, nativeCoin, dest.senderAddress, timeoutHeight2);
-  await src.waitOneBlock();
-
-  // relay and verify this fails (as it should)
-  info = await link.relayAll();
-  assertPacketsFromA(info, 1, false);
+  // ensure that the money was transfered
+  const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.deepEqual(gotFunds, sendFunds);
 });
-*/
