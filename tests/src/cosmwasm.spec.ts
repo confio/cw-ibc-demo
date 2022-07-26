@@ -1,16 +1,14 @@
-import { Link, testutils } from "@confio/relayer";
+import { CosmWasmSigner, Link, testutils } from "@confio/relayer";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
 
 const { osmosis: oldOsmo, setup, wasmd } = testutils;
-
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
 // TODO: replace these with be auto-generated helpers from ts-codegen
-// import { balance, init, sendTokens } from "./cw20";
-// import { assertPacketsFromA, assertPacketsFromB, setupContracts } from "./utils";
-import { setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
+import { listAccounts, showAccount } from "./controller";
+import { assertPacketsFromA, IbcVersion, setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
 
 let wasmIds: Record<string, number> = {};
 let osmosisIds: Record<string, number> = {};
@@ -36,40 +34,108 @@ test.before(async (t) => {
 
 test.serial("set up channel with ics20 contract", async (t) => {
   // instantiate ica controller on wasmd
-  const cosmwasm = await setupWasmClient();
+  const wasmClient = await setupWasmClient();
   const initController = {};
-  const { contractAddress: controllerAddr } = await cosmwasm.sign.instantiate(
-    cosmwasm.senderAddress,
+  const { contractAddress: wasmCont } = await wasmClient.sign.instantiate(
+    wasmClient.senderAddress,
     wasmIds.controller,
     initController,
     "simple controller",
     "auto"
   );
-  t.truthy(controllerAddr);
-  const { ibcPortId: controllerPort } = await cosmwasm.sign.getContract(controllerAddr);
+  t.truthy(wasmCont);
+  const { ibcPortId: controllerPort } = await wasmClient.sign.getContract(wasmCont);
   console.log(`Controller Port: ${controllerPort}`);
   assert(controllerPort);
 
   // instantiate ica host on osmosis
-  const osmo = await setupOsmosisClient();
+  const osmoClient = await setupOsmosisClient();
   const initHost = {
     reflect_code_id: osmosisIds.whitelist,
   };
-  const { contractAddress: hostAddr } = await osmo.sign.instantiate(
-    osmo.senderAddress,
+  const { contractAddress: osmoHost } = await osmoClient.sign.instantiate(
+    osmoClient.senderAddress,
     osmosisIds.host,
     initHost,
     "simple host",
     "auto"
   );
-  t.truthy(hostAddr);
-  const { ibcPortId: hostPort } = await osmo.sign.getContract(hostAddr);
+  t.truthy(osmoHost);
+  const { ibcPortId: hostPort } = await osmoClient.sign.getContract(osmoHost);
   console.log(`Host Port: ${hostPort}`);
   assert(hostPort);
 
   const [src, dest] = await setup(wasmd, osmosis);
   const link = await Link.createWithNewConnections(src, dest);
-  await link.createChannel("A", controllerPort, hostPort, Order.ORDER_UNORDERED, "simple-ica-v1");
+  await link.createChannel("A", controllerPort, hostPort, Order.ORDER_UNORDERED, IbcVersion);
+});
+
+interface SetupInfo {
+  wasmClient: CosmWasmSigner;
+  osmoClient: CosmWasmSigner;
+  wasmController: string;
+  osmoHost: string;
+  link: Link;
+}
+
+async function demoSetup(): Promise<SetupInfo> {
+  // instantiate ica controller on wasmd
+  const wasmClient = await setupWasmClient();
+  const initController = {};
+  const { contractAddress: wasmController } = await wasmClient.sign.instantiate(
+    wasmClient.senderAddress,
+    wasmIds.controller,
+    initController,
+    "simple controller",
+    "auto"
+  );
+  const { ibcPortId: controllerPort } = await wasmClient.sign.getContract(wasmController);
+  assert(controllerPort);
+
+  // instantiate ica host on osmosis
+  const osmoClient = await setupOsmosisClient();
+  const initHost = {
+    reflect_code_id: osmosisIds.whitelist,
+  };
+  const { contractAddress: osmoHost } = await osmoClient.sign.instantiate(
+    osmoClient.senderAddress,
+    osmosisIds.host,
+    initHost,
+    "simple host",
+    "auto"
+  );
+  const { ibcPortId: hostPort } = await osmoClient.sign.getContract(osmoHost);
+  assert(hostPort);
+
+  const [src, dest] = await setup(wasmd, osmosis);
+  const link = await Link.createWithNewConnections(src, dest);
+  await link.createChannel("A", controllerPort, hostPort, Order.ORDER_UNORDERED, IbcVersion);
+
+  return {
+    wasmClient,
+    osmoClient,
+    wasmController,
+    osmoHost,
+    link,
+  };
+}
+
+test.serial("connect account and send tokens", async (t) => {
+  const { wasmClient, wasmController, link } = await demoSetup();
+
+  // there is an initial packet to relay for the whoami run
+  const info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // now we query the address locally
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  t.truthy(accounts[0].remote_addr);
+  const channelId = accounts[0].channel_id;
+
+  // verify we get the address by channelId
+  const account = await showAccount(wasmClient, wasmController, channelId);
+  t.is(accounts[0].remote_addr, account.remote_addr);
 });
 
 /*
