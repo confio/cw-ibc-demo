@@ -41,7 +41,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> StdResult<Response> {
         (RECEIVE_DISPATCH_ID, SubMsgResult::Err(err)) => {
             Ok(Response::new().set_data(encode_ibc_error(err)))
         }
-        (INIT_CALLBACK_ID, SubMsgResult::Ok(response)) => handle_init_callback(deps, response),
+        (INIT_CALLBACK_ID, SubMsgResult::Ok(response)) => reply_init_callback(deps, response),
         _ => Err(StdError::generic_err("invalid reply id or result")),
     }
 }
@@ -59,7 +59,7 @@ fn parse_contract_from_event(events: Vec<Event>) -> Option<String> {
         .map(|a| a.value)
 }
 
-pub fn handle_init_callback(deps: DepsMut, response: SubMsgResponse) -> StdResult<Response> {
+pub fn reply_init_callback(deps: DepsMut, response: SubMsgResponse) -> StdResult<Response> {
     // we use storage to pass info from the caller to the reply
     let id = PENDING.load(deps.storage)?;
     PENDING.remove(deps.storage);
