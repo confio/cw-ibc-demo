@@ -7,7 +7,7 @@ const { osmosis: oldOsmo, setup, wasmd } = testutils;
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
 // TODO: replace these with be auto-generated helpers from ts-codegen
-import { listAccounts, showAccount } from "./controller";
+import { checkRemoteBalance, fundRemoteAccount, listAccounts, showAccount } from "./controller";
 import { assertPacketsFromA, IbcVersion, setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
 
 let wasmIds: Record<string, number> = {};
@@ -32,7 +32,8 @@ test.before(async (t) => {
   t.pass();
 });
 
-test.serial("set up channel with ics20 contract", async (t) => {
+// TODO: re-active this
+test.skip("set up channel with ics20 contract", async (t) => {
   // instantiate ica controller on wasmd
   const wasmClient = await setupWasmClient();
   const initController = {};
@@ -76,6 +77,10 @@ interface SetupInfo {
   wasmController: string;
   osmoHost: string;
   link: Link;
+  ics20: {
+    wasm: string;
+    osmo: string;
+  };
 }
 
 async function demoSetup(): Promise<SetupInfo> {
@@ -107,9 +112,17 @@ async function demoSetup(): Promise<SetupInfo> {
   const { ibcPortId: hostPort } = await osmoClient.sign.getContract(osmoHost);
   assert(hostPort);
 
+  // create a connection and channel for simple-ica
   const [src, dest] = await setup(wasmd, osmosis);
   const link = await Link.createWithNewConnections(src, dest);
   await link.createChannel("A", controllerPort, hostPort, Order.ORDER_UNORDERED, IbcVersion);
+
+  // also create a ics20 channel on this connection
+  const ics20Info = await link.createChannel("A", wasmd.ics20Port, osmosis.ics20Port, Order.ORDER_UNORDERED, "ics20-1");
+  const ics20 = {
+    wasm: ics20Info.src.channelId,
+    osmo: ics20Info.dest.channelId,
+  };
 
   return {
     wasmClient,
@@ -117,25 +130,61 @@ async function demoSetup(): Promise<SetupInfo> {
     wasmController,
     osmoHost,
     link,
+    ics20,
   };
 }
 
 test.serial("connect account and send tokens", async (t) => {
-  const { wasmClient, wasmController, link } = await demoSetup();
+  const { wasmClient, wasmController, link, ics20 } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
-  const info = await link.relayAll();
+  let info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
 
   // now we query the address locally
   const accounts = await listAccounts(wasmClient, wasmController);
   t.is(accounts.length, 1);
-  t.truthy(accounts[0].remote_addr);
+  assert(accounts[0].remote_addr);
   const channelId = accounts[0].channel_id;
 
   // verify we get the address by channelId
-  const account = await showAccount(wasmClient, wasmController, channelId);
-  t.is(accounts[0].remote_addr, account.remote_addr);
+  let account = await showAccount(wasmClient, wasmController, channelId);
+  const remoteAddr = account.remote_addr;
+  assert(remoteAddr);
+  t.is(remoteAddr, accounts[0].remote_addr);
+  t.log(`Remote address: ${remoteAddr}`);
+  t.deepEqual(account.remote_balance, []);
+
+  // let's send some money to the remoteAddr
+  const start = await wasmClient.sign.getBalance(wasmClient.senderAddress, wasmd.denomFee);
+  t.log(start);
+  const toSend = { amount: "2020808", denom: wasmd.denomFee };
+  await fundRemoteAccount(wasmClient, wasmController, channelId, ics20.wasm, toSend);
+  // move the ics20 packet now
+  info = await link.relayAll();
+  // note: we cannot use the assertPacketsFromA helper, as that assumes simple-ica ack shape,
+  // which is different than the ics20 ack we get here
+  t.is(info.packetsFromA, 1);
+
+  // make sure the balance went down (remember, some fees also taken)
+  const middle = await wasmClient.sign.getBalance(wasmClient.senderAddress, wasmd.denomFee);
+  t.true(parseInt(start.amount) >= parseInt(middle.amount) + 2020808);
+
+  // and query it remotely
+  await checkRemoteBalance(wasmClient, wasmController, channelId);
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // now the balance should show up
+  account = await showAccount(wasmClient, wasmController, channelId);
+  t.is(account.remote_addr, remoteAddr);
+  t.is(account.remote_balance.length, 1);
+  t.log(account.remote_balance[0]);
+  const remoteAmt = account.remote_balance[0];
+  const remoteDenom = remoteAmt.denom;
+  t.log(remoteDenom);
+
+  // Finally, we use an simple-ica method to send this back
 });
 
 /*
