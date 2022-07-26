@@ -31,8 +31,7 @@ test.before(async (t) => {
   t.pass();
 });
 
-// TODO: re-active this
-test.skip("set up channel with ics20 contract", async (t) => {
+test.serial("set up channel with ics20 contract", async (t) => {
   // instantiate ica controller on wasmd
   const wasmClient = await setupWasmClient();
   const initController = {};
@@ -133,7 +132,7 @@ async function demoSetup(): Promise<SetupInfo> {
   };
 }
 
-test.skip("connect account and send tokens over", async (t) => {
+test.serial("connect account and send tokens over", async (t) => {
   const { wasmClient, wasmController, link, ics20 } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
