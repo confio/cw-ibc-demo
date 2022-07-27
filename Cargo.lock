@@ -566,6 +566,7 @@ dependencies = [
  "cosmwasm-std",
  "schemars",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -575,9 +576,11 @@ dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
  "cw-storage-plus",
+ "cw-utils",
  "schemars",
  "serde",
  "simple-ica",
+ "thiserror",
 ]
 
 [[package]]

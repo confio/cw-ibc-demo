@@ -3,12 +3,12 @@ use cosmwasm_std::{
     Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order,
-    QueryResponse, Reply, Response, StdError, StdResult, SubMsg, WasmMsg,
+    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse, APP_ORDER,
-    IBC_APP_VERSION,
+    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
+    WhoAmIResponse, IBC_APP_VERSION,
 };
 
 use crate::error::ContractError;
@@ -33,7 +33,7 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &cfg)?;
 
-    Ok(Response::new().add_attribute("action", "instantiate"))
+    Ok(Response::new())
 }
 
 #[entry_point]
@@ -71,22 +71,14 @@ pub fn ibc_channel_open(
     _deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
-) -> StdResult<IbcChannelOpenResponse> {
+) -> Result<IbcChannelOpenResponse, ContractError> {
     let channel = msg.channel();
 
-    if channel.order != APP_ORDER {
-        return Err(StdError::generic_err("Only supports ordered channels"));
-    }
-
+    check_order(&channel.order)?;
     // In ibcv3 we don't check the version string passed in the message
     // and only check the counterparty version.
     if let Some(counter_version) = msg.counterparty_version() {
-        if counter_version != IBC_APP_VERSION {
-            return Err(StdError::generic_err(format!(
-                "Counterparty version must be `{}`",
-                IBC_APP_VERSION
-            )));
-        }
+        check_version(counter_version)?;
     }
 
     // We return the version we need (which could be different than the counterparty version)
@@ -320,7 +312,7 @@ mod tests {
     use cosmwasm_std::{
         attr, coin, coins, from_slice, BankMsg, OwnedDeps, SubMsgResponse, SubMsgResult, WasmMsg,
     };
-    use simple_ica::BAD_APP_ORDER;
+    use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
     const CREATOR: &str = "creator";
     // code id of the reflect contract

@@ -4,11 +4,13 @@ use cosmwasm_std::{
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
 };
 
-use crate::state::{AccountData, ACCOUNTS};
 use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse, APP_ORDER,
-    IBC_APP_VERSION,
+    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
+    WhoAmIResponse,
 };
+
+use crate::error::ContractError;
+use crate::state::{AccountData, ACCOUNTS};
 
 // TODO: make configurable?
 /// packets live one hour
@@ -20,26 +22,12 @@ pub fn ibc_channel_open(
     _deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
-) -> StdResult<Option<Ibc3ChannelOpenResponse>> {
+) -> Result<Option<Ibc3ChannelOpenResponse>, ContractError> {
     let channel = msg.channel();
-
-    if channel.order != APP_ORDER {
-        return Err(StdError::generic_err("Only supports ordered channels"));
-    }
-    if channel.version.as_str() != IBC_APP_VERSION {
-        return Err(StdError::generic_err(format!(
-            "Must set version to `{}`",
-            IBC_APP_VERSION
-        )));
-    }
-
+    check_order(&channel.order)?;
+    check_version(&channel.version)?;
     if let Some(counter_version) = msg.counterparty_version() {
-        if counter_version != IBC_APP_VERSION {
-            return Err(StdError::generic_err(format!(
-                "Counterparty version must be `{}`",
-                IBC_APP_VERSION
-            )));
-        }
+        check_version(counter_version)?;
     }
 
     Ok(None)
@@ -53,7 +41,6 @@ pub fn ibc_channel_connect(
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
-
     let channel_id = &channel.endpoint.channel_id;
 
     // create an account holder the channel exists (not found if not registered)
@@ -235,7 +222,7 @@ mod tests {
         MockStorage,
     };
     use cosmwasm_std::{coin, coins, BankMsg, CosmosMsg, IbcAcknowledgement, OwnedDeps};
-    use simple_ica::BAD_APP_ORDER;
+    use simple_ica::{APP_ORDER, BAD_APP_ORDER, IBC_APP_VERSION};
 
     const CREATOR: &str = "creator";
 

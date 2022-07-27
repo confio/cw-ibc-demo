@@ -1,7 +1,9 @@
+mod checks;
 mod ibc_msg;
 
 use cosmwasm_std::IbcOrder;
 
+pub use crate::checks::{check_order, check_version, SimpleIcaError};
 pub use crate::ibc_msg::{
     AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
 };
