@@ -15,7 +15,7 @@ use crate::error::ContractError;
 use crate::msg::{
     AccountInfo, AccountResponse, InstantiateMsg, ListAccountsResponse, QueryMsg, ReflectExecuteMsg,
 };
-use crate::state::{Config, ACCOUNTS, CONFIG, PENDING};
+use crate::state::{Config, ACCOUNTS, CONFIG, PENDING, RESULTS};
 
 pub const RECEIVE_DISPATCH_ID: u64 = 1234;
 pub const INIT_CALLBACK_ID: u64 = 7890;
@@ -168,9 +168,15 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
     }
 }
 
-pub fn reply_dispatch_callback(_deps: DepsMut, _reply: Reply) -> Result<Response, ContractError> {
-    // TODO
-    Ok(Response::new())
+pub fn reply_dispatch_callback(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    // add the new result to the current tracker
+    let mut results = RESULTS.load(deps.storage)?;
+    results.push(reply.result.unwrap().data.unwrap_or_default());
+    RESULTS.save(deps.storage, &results)?;
+
+    // update result data if this is the last
+    let data = to_binary(&results)?;
+    Ok(Response::new().set_data(data))
 }
 
 pub fn reply_init_callback(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
@@ -200,31 +206,20 @@ pub fn ibc_packet_receive(
     deps: DepsMut,
     _env: Env,
     msg: IbcPacketReceiveMsg,
-) -> StdResult<IbcReceiveResponse> {
-    // put this in a closure so we can convert all error responses into acknowledgements
-    (|| {
-        let packet = msg.packet;
-        // which local channel did this packet come on
-        let caller = packet.dest.channel_id;
-        let msg: PacketMsg = from_slice(&packet.data)?;
-        match msg {
-            PacketMsg::Dispatch { msgs } => receive_dispatch(deps, caller, msgs),
-            PacketMsg::WhoAmI {} => receive_who_am_i(deps, caller),
-            PacketMsg::Balances {} => receive_balances(deps, caller),
-        }
-    })()
-    .or_else(|e| {
-        // we try to capture all app-level errors and convert them into
-        // acknowledgement packets that contain an error code.
-        let acknowledgement = StdAck::fail(format!("invalid packet: {}", e));
-        Ok(IbcReceiveResponse::new()
-            .set_ack(acknowledgement)
-            .add_event(Event::new("ibc").add_attribute("packet", "receive")))
-    })
+) -> Result<IbcReceiveResponse, ContractError> {
+    let packet = msg.packet;
+    // which local channel did this packet come on
+    let caller = packet.dest.channel_id;
+    let msg: PacketMsg = from_slice(&packet.data)?;
+    match msg {
+        PacketMsg::Dispatch { msgs } => receive_dispatch(deps, caller, msgs),
+        PacketMsg::WhoAmI {} => receive_who_am_i(deps, caller),
+        PacketMsg::Balances {} => receive_balances(deps, caller),
+    }
 }
 
 // processes PacketMsg::WhoAmI variant
-fn receive_who_am_i(deps: DepsMut, caller: String) -> StdResult<IbcReceiveResponse> {
+fn receive_who_am_i(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse, ContractError> {
     let account = ACCOUNTS.load(deps.storage, &caller)?;
     let response = WhoAmIResponse {
         account: account.into(),
@@ -237,7 +232,7 @@ fn receive_who_am_i(deps: DepsMut, caller: String) -> StdResult<IbcReceiveRespon
 }
 
 // processes PacketMsg::Balances variant
-fn receive_balances(deps: DepsMut, caller: String) -> StdResult<IbcReceiveResponse> {
+fn receive_balances(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse, ContractError> {
     let account = ACCOUNTS.load(deps.storage, &caller)?;
     let balances = deps.querier.query_all_balances(&account)?;
     let response = BalancesResponse {
@@ -256,7 +251,7 @@ fn receive_dispatch(
     deps: DepsMut,
     caller: String,
     msgs: Vec<CosmosMsg>,
-) -> StdResult<IbcReceiveResponse> {
+) -> Result<IbcReceiveResponse, ContractError> {
     // what is the reflect contract here
     let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
 
@@ -267,8 +262,11 @@ fn receive_dispatch(
     let reflect_msg = cw1_whitelist::msg::ExecuteMsg::Execute { msgs };
     let wasm_msg = wasm_execute(reflect_addr, &reflect_msg, vec![])?;
 
-    // we wrap it in a submessage to properly report errors
-    let msg = SubMsg::reply_on_error(wasm_msg, RECEIVE_DISPATCH_ID);
+    // we wrap it in a submessage to properly report results
+    let msg = SubMsg::reply_on_success(wasm_msg, RECEIVE_DISPATCH_ID);
+
+    // reset the data field
+    RESULTS.save(deps.storage, &vec![])?;
 
     Ok(IbcReceiveResponse::new()
         .set_ack(acknowledgement)
@@ -305,7 +303,8 @@ mod tests {
         mock_wasmd_attr, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
     };
     use cosmwasm_std::{
-        attr, coin, coins, from_slice, BankMsg, OwnedDeps, SubMsgResponse, SubMsgResult, WasmMsg, Binary,
+        attr, coin, coins, from_slice, BankMsg, Binary, OwnedDeps, SubMsgResponse, SubMsgResult,
+        WasmMsg,
     };
     use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
@@ -489,20 +488,8 @@ mod tests {
             msgs: msgs_to_dispatch.clone(),
         };
         let msg = mock_ibc_packet_recv(channel_id, &ibc_msg).unwrap();
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
-        // we didn't dispatch anything
-        assert_eq!(0, res.messages.len());
-        assert_eq!(1, res.events.len());
-        assert_eq!(
-            Event::new("ibc").add_attribute("packet", "receive"),
-            res.events[0]
-        );
-        // acknowledgement is an error
-        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
-        assert_eq!(
-            ack.unwrap_err(),
-            "invalid packet: cosmwasm_std::addresses::Addr not found"
-        );
+        // this returns an error
+        ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap_err();
 
         // register the channel
         connect(deps.as_mut(), channel_id, account);
@@ -540,17 +527,12 @@ mod tests {
             panic!("invalid return message: {:?}", res.messages[0]);
         }
 
-        // invalid packet format on registered channel also returns app-level error
+        // invalid packet format on registered channel also returns error
         let bad_data = InstantiateMsg {
             reflect_code_id: 12345,
         };
         let msg = mock_ibc_packet_recv(channel_id, &bad_data).unwrap();
-        let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
-        // we didn't dispatch anything
-        assert_eq!(0, res.messages.len());
-        // acknowledgement is an error
-        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
-        assert_eq!(ack.unwrap_err(), "invalid packet: Error parsing into type simple_ica::ibc_msg::PacketMsg: unknown variant `reflect_code_id`, expected one of `dispatch`, `who_am_i`, `balances`");
+        ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap_err();
     }
 
     #[test]
