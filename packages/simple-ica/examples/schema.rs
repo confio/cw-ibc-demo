@@ -1,11 +1,9 @@
 use std::env::current_dir;
 use std::fs::create_dir_all;
 
-use cosmwasm_schema::{export_schema, export_schema_with_title, remove_schemas, schema_for};
+use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
-};
+use simple_ica::{BalancesResponse, DispatchResponse, PacketMsg, StdAck, WhoAmIResponse};
 
 fn main() {
     let mut out_dir = current_dir().unwrap();
@@ -14,19 +12,8 @@ fn main() {
     remove_schemas(&out_dir).unwrap();
 
     export_schema(&schema_for!(PacketMsg), &out_dir);
-    export_schema_with_title(
-        &schema_for!(AcknowledgementMsg<BalancesResponse>),
-        &out_dir,
-        "AcknowledgementMsgBalances",
-    );
-    export_schema_with_title(
-        &schema_for!(AcknowledgementMsg<DispatchResponse>),
-        &out_dir,
-        "AcknowledgementMsgDispatch",
-    );
-    export_schema_with_title(
-        &schema_for!(AcknowledgementMsg<WhoAmIResponse>),
-        &out_dir,
-        "AcknowledgementMsgWhoAmI",
-    );
+    export_schema(&schema_for!(StdAck), &out_dir);
+    export_schema(&schema_for!(DispatchResponse), &out_dir);
+    export_schema(&schema_for!(BalancesResponse), &out_dir);
+    export_schema(&schema_for!(WhoAmIResponse), &out_dir);
 }

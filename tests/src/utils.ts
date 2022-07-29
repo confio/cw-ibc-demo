@@ -1,7 +1,8 @@
 import { readFileSync } from "fs";
 
 import { AckWithMetadata, CosmWasmSigner, RelayInfo, testutils } from "@confio/relayer";
-import { fromUtf8 } from "@cosmjs/encoding";
+import { fromBase64, fromUtf8 } from "@cosmjs/encoding";
+import { assert } from "@cosmjs/utils";
 
 const { fundAccount, generateMnemonic, osmosis: oldOsmo, signingCosmWasmClient, wasmd } = testutils;
 
@@ -53,10 +54,9 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
       throw new Error(`Unexpected error in ack: ${parsed.error}`);
     }
     console.log(parsed);
-    // Note: this may be empty in some cases (dispatch returns { ok: null })
-    // if (!parsed.ok) {
-    //   throw new Error(`Ack result unexpectedly empty`);
-    // }
+    if (!parsed.result) {
+      throw new Error(`Ack result unexpectedly empty`);
+    }
   }
 }
 
@@ -64,7 +64,7 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
 export function assertAckErrors(acks: AckWithMetadata[]) {
   for (const ack of acks) {
     const parsed = JSON.parse(fromUtf8(ack.acknowledgement));
-    if (parsed.ok) {
+    if (parsed.result) {
       throw new Error(`Ack result unexpectedly set`);
     }
     if (!parsed.error) {
@@ -99,4 +99,10 @@ export function assertPacketsFromB(relay: RelayInfo, count: number, success: boo
   } else {
     assertAckErrors(relay.acksFromA);
   }
+}
+
+export function parseAcknowledgementSuccess(ack: AckWithMetadata): unknown {
+  const response = JSON.parse(fromUtf8(ack.acknowledgement));
+  assert(response.result);
+  return JSON.parse(fromUtf8(fromBase64(response.result)));
 }

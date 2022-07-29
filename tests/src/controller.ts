@@ -1,7 +1,6 @@
 import { CosmWasmSigner } from "@confio/relayer";
 import { ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { Coin } from "@cosmjs/stargate";
-// import { toBase64, toUtf8 } from "@cosmjs/encoding";
 
 export interface AccountInfo {
   channel_id: string;
@@ -68,6 +67,23 @@ export function remoteBankSend(
       },
     },
   ];
+  return remoteCall(cosmwasm, controllerAddr, channelId, msgs);
+}
+
+export function remoteBankMultiSend(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  content: {
+    to_address: string;
+    amount: Coin[];
+  }[]
+): Promise<ExecuteResult> {
+  const msgs = content.map(({ to_address, amount }) => ({
+    bank: {
+      send: { to_address, amount },
+    },
+  }));
   return remoteCall(cosmwasm, controllerAddr, channelId, msgs);
 }
 

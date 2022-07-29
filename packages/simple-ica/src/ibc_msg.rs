@@ -1,5 +1,6 @@
-use cosmwasm_std::{Coin, ContractResult, CosmosMsg};
+use cosmwasm_std::{from_slice, to_binary, Binary, Coin, CosmosMsg};
 use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 /// This is the message we send over the IBC channel
@@ -11,35 +12,56 @@ pub enum PacketMsg {
     Balances {},
 }
 
-// /// This is a generic ICS acknowledgement format.
-// /// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/core/channel/v1/channel.proto#L141-L147
-// /// This is compatible with the JSON serialization
-// #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-// #[serde(rename_all = "snake_case")]
-// pub enum Ics20Ack {
-//     Result(Binary),
-//     Error(String),
-// }
-//
-// // create a serialized success message
-// fn ack_success() -> Binary {
-//     let res = Ics20Ack::Result(b"1".into());
-//     to_binary(&res).unwrap()
-// }
-//
-// // create a serialized error message
-// fn ack_fail(err: String) -> Binary {
-//     let res = Ics20Ack::Error(err);
-//     to_binary(&res).unwrap()
-// }
+/// This is a generic ICS acknowledgement format.
+/// Proto defined here: https://github.com/cosmos/cosmos-sdk/blob/v0.42.0/proto/ibc/core/channel/v1/channel.proto#L141-L147
+/// If ibc_receive_packet returns Err(), then x/wasm runtime will rollback the state and return an error message in this format
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub enum StdAck {
+    Result(Binary),
+    Error(String),
+}
 
-/// All IBC acknowledgements are wrapped in `ContractResult`.
-/// The success value depends on the PacketMsg variant.
-pub type AcknowledgementMsg<T> = ContractResult<T>;
+impl StdAck {
+    // create a serialized success message
+    pub fn success(data: impl Serialize) -> Binary {
+        let res = to_binary(&data).unwrap();
+        StdAck::Result(res).ack()
+    }
 
-/// This is the success response we send on ack for PacketMsg::Dispatch.
-/// Just acknowledge success or error
-pub type DispatchResponse = ();
+    // create a serialized error message
+    pub fn fail(err: String) -> Binary {
+        StdAck::Error(err).ack()
+    }
+
+    pub fn ack(&self) -> Binary {
+        to_binary(self).unwrap()
+    }
+
+    pub fn unwrap(self) -> Binary {
+        match self {
+            StdAck::Result(data) => data,
+            StdAck::Error(err) => panic!("{}", err),
+        }
+    }
+
+    pub fn unwrap_into<T: DeserializeOwned>(self) -> T {
+        from_slice(&self.unwrap()).unwrap()
+    }
+
+    pub fn unwrap_err(self) -> String {
+        match self {
+            StdAck::Result(_) => panic!("not an error"),
+            StdAck::Error(err) => err,
+        }
+    }
+}
+
+/// Return the data field for each message
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct DispatchResponse {
+    pub results: Vec<Binary>,
+}
 
 /// This is the success response we send on ack for PacketMsg::WhoAmI.
 /// Return the caller's account address on the remote chain

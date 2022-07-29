@@ -6,8 +6,22 @@ import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
 const { osmosis: oldOsmo, setup, wasmd, randomAddress } = testutils;
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
-import { checkRemoteBalance, fundRemoteAccount, listAccounts, remoteBankSend, showAccount } from "./controller";
-import { assertPacketsFromA, IbcVersion, setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
+import {
+  checkRemoteBalance,
+  fundRemoteAccount,
+  listAccounts,
+  remoteBankMultiSend,
+  remoteBankSend,
+  showAccount,
+} from "./controller";
+import {
+  assertPacketsFromA,
+  IbcVersion,
+  parseAcknowledgementSuccess,
+  setupContracts,
+  setupOsmosisClient,
+  setupWasmClient,
+} from "./utils";
 
 let wasmIds: Record<string, number> = {};
 let osmosisIds: Record<string, number> = {};
@@ -213,9 +227,91 @@ test.serial("control action on remote chain", async (t) => {
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // Note: rethink the `{ ok: null }` message we get back on success
+  // TODO: add helper for this
+  const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
+  // check we get { results : ['']} (one message with no data)
+  t.deepEqual(contractData, { results: [""] });
 
   // ensure that the money was transfered
   const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
   t.deepEqual(gotFunds, sendFunds);
+});
+
+test.serial("handle errors on dispatch", async (t) => {
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
+
+  // there is an initial packet to relay for the whoami run
+  let info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // get the account info
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  const { remote_addr: remoteAddr, channel_id: channelId } = accounts[0];
+  assert(remoteAddr);
+  assert(channelId);
+
+  // send some osmo to the remote address (using another funded account there)
+  const initFunds = { amount: "2500600", denom: osmosis.denomFee };
+  await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
+
+  // make a new empty account on osmosis
+  const emptyAddr = randomAddress(osmosis.prefix);
+  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(noFunds.amount, "0");
+
+  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
+  const sendFunds = { amount: "1200300", denom: "no-such-funds" };
+  await remoteBankSend(wasmClient, wasmController, channelId, emptyAddr, [sendFunds]);
+
+  // relay this over
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
+
+  // ensure that no money was transfered
+  const gotNoFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(gotNoFunds.amount, "0");
+});
+
+test.serial("properly rollback first submessage if second fails", async (t) => {
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
+
+  // there is an initial packet to relay for the whoami run
+  let info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // get the account info
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  const { remote_addr: remoteAddr, channel_id: channelId } = accounts[0];
+  assert(remoteAddr);
+  assert(channelId);
+
+  // send some osmo to the remote address (using another funded account there)
+  const initFunds = { amount: "2500600", denom: osmosis.denomFee };
+  await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
+
+  // make a new empty account on osmosis
+  const emptyAddr = randomAddress(osmosis.prefix);
+  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(noFunds.amount, "0");
+
+  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
+  // first message with valid funds, second with invalid
+  // should return error ack, both transfers should eb rolled back
+  const goodSend = { amount: "1200300", denom: osmosis.denomFee };
+  const badSend = { amount: "1200300", denom: "no-such-funds" };
+  const contents = [
+    { to_address: emptyAddr, amount: [goodSend] },
+    { to_address: emptyAddr, amount: [badSend] },
+  ];
+  await remoteBankMultiSend(wasmClient, wasmController, channelId, contents);
+
+  // relay this over
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
+
+  // ensure that no money was transfered
+  const gotNoFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(gotNoFunds.amount, "0");
 });
