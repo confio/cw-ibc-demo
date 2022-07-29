@@ -71,6 +71,23 @@ export function remoteBankSend(
   return remoteCall(cosmwasm, controllerAddr, channelId, msgs);
 }
 
+export function remoteBankMultiSend(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  content: {
+    to_address: string;
+    amount: Coin[];
+  }[]
+): Promise<ExecuteResult> {
+  const msgs = content.map(({ to_address, amount }) => ({
+    bank: {
+      send: { to_address, amount },
+    },
+  }));
+  return remoteCall(cosmwasm, controllerAddr, channelId, msgs);
+}
+
 export async function remoteCall(
   cosmwasm: CosmWasmSigner,
   controllerAddr: string,
