@@ -1,13 +1,13 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, wasm_execute, BankMsg, Binary, CosmosMsg, Deps, DepsMut,
-    Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
+    entry_point, from_slice, to_binary, wasm_execute, BankMsg, CosmosMsg, Deps, DepsMut, Empty,
+    Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order,
     QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
-    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
+    check_order, check_version, BalancesResponse, DispatchResponse, PacketMsg, StdAck,
     WhoAmIResponse, IBC_APP_VERSION,
 };
 
@@ -192,12 +192,6 @@ pub fn reply_init_callback(deps: DepsMut, reply: Reply) -> Result<Response, Cont
     Ok(Response::new())
 }
 
-// this encode an error or error message into a proper acknowledgement to the recevier
-fn encode_ibc_error(msg: impl Into<String>) -> Binary {
-    // this cannot error, unwrap to keep the interface simple
-    to_binary(&AcknowledgementMsg::<()>::Err(msg.into())).unwrap()
-}
-
 #[entry_point]
 /// we look for a the proper reflect contract to relay to and send the message
 /// We cannot return any meaningful response value as we do not know the response value
@@ -222,7 +216,7 @@ pub fn ibc_packet_receive(
     .or_else(|e| {
         // we try to capture all app-level errors and convert them into
         // acknowledgement packets that contain an error code.
-        let acknowledgement = encode_ibc_error(format!("invalid packet: {}", e));
+        let acknowledgement = StdAck::fail(format!("invalid packet: {}", e));
         Ok(IbcReceiveResponse::new()
             .set_ack(acknowledgement)
             .add_event(Event::new("ibc").add_attribute("packet", "receive")))
@@ -235,7 +229,7 @@ fn receive_who_am_i(deps: DepsMut, caller: String) -> StdResult<IbcReceiveRespon
     let response = WhoAmIResponse {
         account: account.into(),
     };
-    let acknowledgement = to_binary(&AcknowledgementMsg::Ok(response))?;
+    let acknowledgement = StdAck::success(&response);
     // and we are golden
     Ok(IbcReceiveResponse::new()
         .set_ack(acknowledgement)
@@ -250,7 +244,7 @@ fn receive_balances(deps: DepsMut, caller: String) -> StdResult<IbcReceiveRespon
         account: account.into(),
         balances,
     };
-    let acknowledgement = to_binary(&AcknowledgementMsg::Ok(response))?;
+    let acknowledgement = StdAck::success(&response);
     // and we are golden
     Ok(IbcReceiveResponse::new()
         .set_ack(acknowledgement)
@@ -267,7 +261,8 @@ fn receive_dispatch(
     let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
 
     // let them know we're fine
-    let acknowledgement = to_binary(&AcknowledgementMsg::<DispatchResponse>::Ok(()))?;
+    let response: DispatchResponse = ();
+    let acknowledgement = StdAck::success(&response);
     // create the message to re-dispatch to the reflect contract
     let reflect_msg = cw1_whitelist::msg::ExecuteMsg::Execute { msgs };
     let wasm_msg = wasm_execute(reflect_addr, &reflect_msg, vec![])?;
@@ -310,7 +305,7 @@ mod tests {
         mock_wasmd_attr, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
     };
     use cosmwasm_std::{
-        attr, coin, coins, from_slice, BankMsg, OwnedDeps, SubMsgResponse, SubMsgResult, WasmMsg,
+        attr, coin, coins, from_slice, BankMsg, OwnedDeps, SubMsgResponse, SubMsgResult, WasmMsg, Binary,
     };
     use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
@@ -503,7 +498,7 @@ mod tests {
             res.events[0]
         );
         // acknowledgement is an error
-        let ack: AcknowledgementMsg<DispatchResponse> = from_slice(&res.acknowledgement).unwrap();
+        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
         assert_eq!(
             ack.unwrap_err(),
             "invalid packet: cosmwasm_std::addresses::Addr not found"
@@ -517,7 +512,7 @@ mod tests {
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
 
         // assert app-level success
-        let ack: AcknowledgementMsg<()> = from_slice(&res.acknowledgement).unwrap();
+        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
         ack.unwrap();
 
         // and we dispatch the BankMsg via submessage
@@ -554,7 +549,7 @@ mod tests {
         // we didn't dispatch anything
         assert_eq!(0, res.messages.len());
         // acknowledgement is an error
-        let ack: AcknowledgementMsg<DispatchResponse> = from_slice(&res.acknowledgement).unwrap();
+        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
         assert_eq!(ack.unwrap_err(), "invalid packet: Error parsing into type simple_ica::ibc_msg::PacketMsg: unknown variant `reflect_code_id`, expected one of `dispatch`, `who_am_i`, `balances`");
     }
 

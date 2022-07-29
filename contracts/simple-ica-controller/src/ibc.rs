@@ -4,10 +4,7 @@ use cosmwasm_std::{
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
-use simple_ica::{
-    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
-    WhoAmIResponse,
-};
+use simple_ica::{check_order, check_version, BalancesResponse, PacketMsg, StdAck, WhoAmIResponse};
 
 use crate::error::ContractError;
 use crate::state::{AccountData, ACCOUNTS};
@@ -101,19 +98,12 @@ pub fn ibc_packet_ack(
     let caller = msg.original_packet.src.channel_id;
     // we need to parse the ack based on our request
     let packet: PacketMsg = from_slice(&msg.original_packet.data)?;
+    let res: StdAck = from_slice(&msg.acknowledgement.data)?;
+
     match packet {
-        PacketMsg::Dispatch { .. } => {
-            let res: AcknowledgementMsg<DispatchResponse> = from_slice(&msg.acknowledgement.data)?;
-            acknowledge_dispatch(deps, caller, res)
-        }
-        PacketMsg::WhoAmI {} => {
-            let res: AcknowledgementMsg<WhoAmIResponse> = from_slice(&msg.acknowledgement.data)?;
-            acknowledge_who_am_i(deps, caller, res)
-        }
-        PacketMsg::Balances {} => {
-            let res: AcknowledgementMsg<BalancesResponse> = from_slice(&msg.acknowledgement.data)?;
-            acknowledge_balances(deps, env, caller, res)
-        }
+        PacketMsg::Dispatch { .. } => acknowledge_dispatch(deps, caller, res),
+        PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
+        PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
     }
 }
 
@@ -122,7 +112,7 @@ pub fn ibc_packet_ack(
 fn acknowledge_dispatch(
     _deps: DepsMut,
     _caller: String,
-    _ack: AcknowledgementMsg<DispatchResponse>,
+    _ack: StdAck,
 ) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
@@ -133,12 +123,12 @@ fn acknowledge_dispatch(
 fn acknowledge_who_am_i(
     deps: DepsMut,
     caller: String,
-    ack: AcknowledgementMsg<WhoAmIResponse>,
+    ack: StdAck,
 ) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let WhoAmIResponse { account } = match ack {
-        AcknowledgementMsg::Ok(res) => res,
-        AcknowledgementMsg::Err(e) => {
+        StdAck::Result(res) => from_slice(&res)?,
+        StdAck::Error(e) => {
             return Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_who_am_i")
                 .add_attribute("error", e))
@@ -166,12 +156,12 @@ fn acknowledge_balances(
     deps: DepsMut,
     env: Env,
     caller: String,
-    ack: AcknowledgementMsg<BalancesResponse>,
+    ack: StdAck,
 ) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let BalancesResponse { account, balances } = match ack {
-        AcknowledgementMsg::Ok(res) => res,
-        AcknowledgementMsg::Err(e) => {
+        StdAck::Result(res) => from_slice(&res)?,
+        StdAck::Error(e) => {
             return Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_balances")
                 .add_attribute("error", e))
@@ -257,10 +247,10 @@ mod tests {
 
     fn who_am_i_response(deps: DepsMut, channel_id: &str, account: impl Into<String>) {
         let packet = PacketMsg::WhoAmI {};
-        let response = AcknowledgementMsg::Ok(WhoAmIResponse {
+        let res = StdAck::success(WhoAmIResponse {
             account: account.into(),
         });
-        let ack = IbcAcknowledgement::encode_json(&response).unwrap();
+        let ack = IbcAcknowledgement::new(res);
         let msg = mock_ibc_packet_ack(channel_id, &packet, ack).unwrap();
         let res = ibc_packet_ack(deps, mock_env(), msg).unwrap();
         assert_eq!(0, res.messages.len());
@@ -341,8 +331,8 @@ mod tests {
             CosmosMsg::Ibc(IbcMsg::SendPacket {
                 channel_id, data, ..
             }) => {
-                let ack = IbcAcknowledgement::encode_json(&AcknowledgementMsg::Ok(())).unwrap();
-                let mut msg = mock_ibc_packet_ack(&channel_id, &1, ack).unwrap();
+                let ack = IbcAcknowledgement::new(StdAck::success(&()));
+                let mut msg = mock_ibc_packet_ack(&channel_id, &1u32, ack).unwrap();
                 msg.original_packet.data = data;
                 msg
             }

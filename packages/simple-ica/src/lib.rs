@@ -4,9 +4,7 @@ mod ibc_msg;
 use cosmwasm_std::IbcOrder;
 
 pub use crate::checks::{check_order, check_version, SimpleIcaError};
-pub use crate::ibc_msg::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse,
-};
+pub use crate::ibc_msg::{BalancesResponse, DispatchResponse, PacketMsg, StdAck, WhoAmIResponse};
 
 pub const IBC_APP_VERSION: &str = "simple-ica-v1";
 pub const APP_ORDER: IbcOrder = IbcOrder::Unordered;
