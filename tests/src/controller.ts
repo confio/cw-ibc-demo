@@ -1,7 +1,6 @@
 import { CosmWasmSigner } from "@confio/relayer";
 import { ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { Coin } from "@cosmjs/stargate";
-// import { toBase64, toUtf8 } from "@cosmjs/encoding";
 
 export interface AccountInfo {
   channel_id: string;
