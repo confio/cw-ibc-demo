@@ -28,21 +28,21 @@ pub fn instantiate(
 #[entry_point]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
-        ExecuteMsg::UpdateAdmin { admin } => handle_update_admin(deps, info, admin),
+        ExecuteMsg::UpdateAdmin { admin } => execute_update_admin(deps, info, admin),
         ExecuteMsg::SendMsgs { channel_id, msgs } => {
-            handle_send_msgs(deps, env, info, channel_id, msgs)
+            execute_send_msgs(deps, env, info, channel_id, msgs)
         }
         ExecuteMsg::CheckRemoteBalance { channel_id } => {
-            handle_check_remote_balance(deps, env, info, channel_id)
+            execute_check_remote_balance(deps, env, info, channel_id)
         }
         ExecuteMsg::SendFunds {
             reflect_channel_id,
             transfer_channel_id,
-        } => handle_send_funds(deps, env, info, reflect_channel_id, transfer_channel_id),
+        } => execute_send_funds(deps, env, info, reflect_channel_id, transfer_channel_id),
     }
 }
 
-pub fn handle_update_admin(
+pub fn execute_update_admin(
     deps: DepsMut,
     info: MessageInfo,
     new_admin: String,
@@ -60,7 +60,7 @@ pub fn handle_update_admin(
         .add_attribute("new_admin", cfg.admin))
 }
 
-pub fn handle_send_msgs(
+pub fn execute_send_msgs(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -89,7 +89,7 @@ pub fn handle_send_msgs(
     Ok(res)
 }
 
-pub fn handle_check_remote_balance(
+pub fn execute_check_remote_balance(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
@@ -117,7 +117,7 @@ pub fn handle_check_remote_balance(
     Ok(res)
 }
 
-pub fn handle_send_funds(
+pub fn execute_send_funds(
     deps: DepsMut,
     env: Env,
     mut info: MessageInfo,

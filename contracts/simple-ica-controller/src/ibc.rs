@@ -1,14 +1,16 @@
 use cosmwasm_std::{
     entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
-use crate::state::{AccountData, ACCOUNTS};
 use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse, APP_ORDER,
-    IBC_APP_VERSION,
+    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
+    WhoAmIResponse,
 };
+
+use crate::error::ContractError;
+use crate::state::{AccountData, ACCOUNTS};
 
 // TODO: make configurable?
 /// packets live one hour
@@ -20,26 +22,12 @@ pub fn ibc_channel_open(
     _deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
-) -> StdResult<Option<Ibc3ChannelOpenResponse>> {
+) -> Result<Option<Ibc3ChannelOpenResponse>, ContractError> {
     let channel = msg.channel();
-
-    if channel.order != APP_ORDER {
-        return Err(StdError::generic_err("Only supports ordered channels"));
-    }
-    if channel.version.as_str() != IBC_APP_VERSION {
-        return Err(StdError::generic_err(format!(
-            "Must set version to `{}`",
-            IBC_APP_VERSION
-        )));
-    }
-
+    check_order(&channel.order)?;
+    check_version(&channel.version)?;
     if let Some(counter_version) = msg.counterparty_version() {
-        if counter_version != IBC_APP_VERSION {
-            return Err(StdError::generic_err(format!(
-                "Counterparty version must be `{}`",
-                IBC_APP_VERSION
-            )));
-        }
+        check_version(counter_version)?;
     }
 
     Ok(None)
@@ -53,7 +41,6 @@ pub fn ibc_channel_connect(
     msg: IbcChannelConnectMsg,
 ) -> StdResult<IbcBasicResponse> {
     let channel = msg.channel();
-
     let channel_id = &channel.endpoint.channel_id;
 
     // create an account holder the channel exists (not found if not registered)
@@ -109,7 +96,7 @@ pub fn ibc_packet_ack(
     deps: DepsMut,
     env: Env,
     msg: IbcPacketAckMsg,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // which local channel was this packet send from
     let caller = msg.original_packet.src.channel_id;
     // we need to parse the ack based on our request
@@ -136,7 +123,7 @@ fn acknowledge_dispatch(
     _deps: DepsMut,
     _caller: String,
     _ack: AcknowledgementMsg<DispatchResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
 }
@@ -147,7 +134,7 @@ fn acknowledge_who_am_i(
     deps: DepsMut,
     caller: String,
     ack: AcknowledgementMsg<WhoAmIResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let WhoAmIResponse { account } = match ack {
         AcknowledgementMsg::Ok(res) => res,
@@ -167,7 +154,7 @@ fn acknowledge_who_am_i(
                 }
                 Ok(acct)
             }
-            None => Err(StdError::generic_err("no account to update")),
+            None => Err(ContractError::UnregisteredChannel(caller.clone())),
         }
     })?;
 
@@ -180,7 +167,7 @@ fn acknowledge_balances(
     env: Env,
     caller: String,
     ack: AcknowledgementMsg<BalancesResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let BalancesResponse { account, balances } = match ack {
         AcknowledgementMsg::Ok(res) => res,
@@ -193,12 +180,9 @@ fn acknowledge_balances(
 
     ACCOUNTS.update(deps.storage, &caller, |acct| match acct {
         Some(acct) => {
-            if let Some(old_addr) = acct.remote_addr {
-                if old_addr != account {
-                    return Err(StdError::generic_err(format!(
-                        "remote account changed from {} to {}",
-                        old_addr, account
-                    )));
+            if let Some(old) = acct.remote_addr {
+                if old != account {
+                    return Err(ContractError::RemoteAccountChanged { old, addr: account });
                 }
             }
             Ok(AccountData {
@@ -207,7 +191,7 @@ fn acknowledge_balances(
                 remote_balance: balances,
             })
         }
-        None => Err(StdError::generic_err("no account to update")),
+        None => Err(ContractError::UnregisteredChannel(caller.clone())),
     })?;
 
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_balances"))
@@ -235,7 +219,7 @@ mod tests {
         MockStorage,
     };
     use cosmwasm_std::{coin, coins, BankMsg, CosmosMsg, IbcAcknowledgement, OwnedDeps};
-    use simple_ica::BAD_APP_ORDER;
+    use simple_ica::{APP_ORDER, BAD_APP_ORDER, IBC_APP_VERSION};
 
     const CREATOR: &str = "creator";
 

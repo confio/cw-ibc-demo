@@ -3,14 +3,15 @@ use cosmwasm_std::{
     Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order,
-    QueryResponse, Reply, Response, StdError, StdResult, SubMsg, SubMsgResponse, SubMsgResult,
-    WasmMsg,
+    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
 };
+use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
-    AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg, WhoAmIResponse, APP_ORDER,
-    IBC_APP_VERSION,
+    check_order, check_version, AcknowledgementMsg, BalancesResponse, DispatchResponse, PacketMsg,
+    WhoAmIResponse, IBC_APP_VERSION,
 };
 
+use crate::error::ContractError;
 use crate::msg::{
     AccountInfo, AccountResponse, InstantiateMsg, ListAccountsResponse, QueryMsg, ReflectExecuteMsg,
 };
@@ -32,58 +33,7 @@ pub fn instantiate(
     };
     CONFIG.save(deps.storage, &cfg)?;
 
-    Ok(Response::new().add_attribute("action", "instantiate"))
-}
-
-#[entry_point]
-pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> StdResult<Response> {
-    match (reply.id, reply.result) {
-        (RECEIVE_DISPATCH_ID, SubMsgResult::Err(err)) => {
-            Ok(Response::new().set_data(encode_ibc_error(err)))
-        }
-        (INIT_CALLBACK_ID, SubMsgResult::Ok(response)) => handle_init_callback(deps, response),
-        _ => Err(StdError::generic_err("invalid reply id or result")),
-    }
-}
-
-// updated with https://github.com/CosmWasm/wasmd/pull/586 (emitted in keeper.Instantiate)
-fn parse_contract_from_event(events: Vec<Event>) -> Option<String> {
-    events
-        .into_iter()
-        .find(|e| e.ty == "instantiate")
-        .and_then(|ev| {
-            ev.attributes
-                .into_iter()
-                .find(|a| a.key == "_contract_address")
-        })
-        .map(|a| a.value)
-}
-
-pub fn handle_init_callback(deps: DepsMut, response: SubMsgResponse) -> StdResult<Response> {
-    // we use storage to pass info from the caller to the reply
-    let id = PENDING.load(deps.storage)?;
-    PENDING.remove(deps.storage);
-
-    // parse contract info from events
-    let contract_addr = match parse_contract_from_event(response.events) {
-        Some(addr) => deps.api.addr_validate(&addr),
-        None => Err(StdError::generic_err(
-            "No _contract_address found in callback events",
-        )),
-    }?;
-
-    // store id -> contract_addr if it is empty
-    // id comes from: `let chan_id = msg.endpoint.channel_id;` in `ibc_channel_connect`
-    ACCOUNTS.update(deps.storage, &id, |val| -> StdResult<_> {
-        match val {
-            Some(_) => Err(StdError::generic_err(
-                "Cannot register over an existing channel",
-            )),
-            None => Ok(contract_addr),
-        }
-    })?;
-
-    Ok(Response::new().add_attribute("action", "execute_init_callback"))
+    Ok(Response::new())
 }
 
 #[entry_point]
@@ -121,22 +71,14 @@ pub fn ibc_channel_open(
     _deps: DepsMut,
     _env: Env,
     msg: IbcChannelOpenMsg,
-) -> StdResult<IbcChannelOpenResponse> {
+) -> Result<IbcChannelOpenResponse, ContractError> {
     let channel = msg.channel();
 
-    if channel.order != APP_ORDER {
-        return Err(StdError::generic_err("Only supports ordered channels"));
-    }
-
+    check_order(&channel.order)?;
     // In ibcv3 we don't check the version string passed in the message
     // and only check the counterparty version.
     if let Some(counter_version) = msg.counterparty_version() {
-        if counter_version != IBC_APP_VERSION {
-            return Err(StdError::generic_err(format!(
-                "Counterparty version must be `{}`",
-                IBC_APP_VERSION
-            )));
-        }
+        check_version(counter_version)?;
     }
 
     // We return the version we need (which could be different than the counterparty version)
@@ -217,10 +159,37 @@ pub fn ibc_channel_close(
         .add_attribute("steal_funds", steal_funds.to_string()))
 }
 
-/// this is a no-op just to test how this integrates with wasmd
 #[entry_point]
-pub fn migrate(_deps: DepsMut, _env: Env, _msg: Empty) -> StdResult<Response> {
-    Ok(Response::default())
+pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, ContractError> {
+    match reply.id {
+        RECEIVE_DISPATCH_ID => reply_dispatch_callback(deps, reply),
+        INIT_CALLBACK_ID => reply_init_callback(deps, reply),
+        _ => Err(ContractError::InvalidReplyId),
+    }
+}
+
+pub fn reply_dispatch_callback(_deps: DepsMut, _reply: Reply) -> Result<Response, ContractError> {
+    // TODO
+    Ok(Response::new())
+}
+
+pub fn reply_init_callback(deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    // we use storage to pass info from the caller to the reply
+    let id = PENDING.load(deps.storage)?;
+    PENDING.remove(deps.storage);
+
+    // parse contract info from data
+    let raw_addr = parse_reply_instantiate_data(reply)?.contract_address;
+    let contract_addr = deps.api.addr_validate(&raw_addr)?;
+
+    // store id -> contract_addr if it is empty
+    // id comes from: `let chan_id = msg.endpoint.channel_id;` in `ibc_channel_connect`
+    if ACCOUNTS.may_load(deps.storage, &id)?.is_some() {
+        return Err(ContractError::ChannelAlreadyRegistered);
+    }
+    ACCOUNTS.save(deps.storage, &id, &contract_addr)?;
+
+    Ok(Response::new())
 }
 
 // this encode an error or error message into a proper acknowledgement to the recevier
@@ -340,8 +309,10 @@ mod tests {
         mock_ibc_channel_open_init, mock_ibc_channel_open_try, mock_ibc_packet_recv, mock_info,
         mock_wasmd_attr, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
     };
-    use cosmwasm_std::{attr, coin, coins, from_slice, BankMsg, OwnedDeps, WasmMsg};
-    use simple_ica::BAD_APP_ORDER;
+    use cosmwasm_std::{
+        attr, coin, coins, from_slice, BankMsg, OwnedDeps, SubMsgResponse, SubMsgResult, WasmMsg,
+    };
+    use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
     const CREATOR: &str = "creator";
     // code id of the reflect contract
@@ -358,6 +329,13 @@ mod tests {
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
         deps
+    }
+
+    fn fake_data(reflect_addr: &str) -> Binary {
+        // works with length < 128
+        let mut encoded = vec![0x0a, reflect_addr.len() as u8];
+        encoded.extend(reflect_addr.as_bytes());
+        Binary::from(encoded)
     }
 
     fn fake_events(reflect_addr: &str) -> Vec<Event> {
@@ -395,7 +373,7 @@ mod tests {
             id,
             result: SubMsgResult::Ok(SubMsgResponse {
                 events: fake_events(&account),
-                data: None,
+                data: Some(fake_data(&account)),
             }),
         };
         reply(deps.branch(), mock_env(), response).unwrap();
@@ -469,7 +447,7 @@ mod tests {
             id,
             result: SubMsgResult::Ok(SubMsgResponse {
                 events: fake_events(REFLECT_ADDR),
-                data: None,
+                data: Some(fake_data(REFLECT_ADDR)),
             }),
         };
         reply(deps.as_mut(), mock_env(), response).unwrap();
