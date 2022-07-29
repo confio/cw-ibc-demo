@@ -1,5 +1,4 @@
 import { CosmWasmSigner, Link, testutils } from "@confio/relayer";
-import { fromUtf8 } from "@cosmjs/encoding";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
@@ -15,7 +14,14 @@ import {
   remoteBankSend,
   showAccount,
 } from "./controller";
-import { assertPacketsFromA, IbcVersion, setupContracts, setupOsmosisClient, setupWasmClient } from "./utils";
+import {
+  assertPacketsFromA,
+  IbcVersion,
+  parseAcknowledgementSuccess,
+  setupContracts,
+  setupOsmosisClient,
+  setupWasmClient,
+} from "./utils";
 
 let wasmIds: Record<string, number> = {};
 let osmosisIds: Record<string, number> = {};
@@ -221,13 +227,10 @@ test.serial("control action on remote chain", async (t) => {
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // check we get a vector here with the data returned (actually empty here)
-  const response = JSON.parse(fromUtf8(info.acksFromB[0].acknowledgement));
-  t.truthy(response.result);
-  t.log(response.result);
-  t.true(Array.isArray(response.result));
-  t.is(1, response.result.length);
-  t.deepEqual("", response.result[0]);
+  // TODO: add helper for this
+  const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
+  // check we get { results : ['']} (one message with no data)
+  t.deepEqual(contractData, { results: [""] });
 
   // ensure that the money was transfered
   const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);

@@ -1,7 +1,8 @@
 import { readFileSync } from "fs";
 
 import { AckWithMetadata, CosmWasmSigner, RelayInfo, testutils } from "@confio/relayer";
-import { fromUtf8 } from "@cosmjs/encoding";
+import { fromBase64, fromUtf8 } from "@cosmjs/encoding";
+import { assert } from "@cosmjs/utils";
 
 const { fundAccount, generateMnemonic, osmosis: oldOsmo, signingCosmWasmClient, wasmd } = testutils;
 
@@ -98,4 +99,10 @@ export function assertPacketsFromB(relay: RelayInfo, count: number, success: boo
   } else {
     assertAckErrors(relay.acksFromA);
   }
+}
+
+export function parseAcknowledgementSuccess(ack: AckWithMetadata): unknown {
+  const response = JSON.parse(fromUtf8(ack.acknowledgement));
+  assert(response.result);
+  return JSON.parse(fromUtf8(fromBase64(response.result)));
 }
