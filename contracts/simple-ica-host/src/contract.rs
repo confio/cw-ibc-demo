@@ -175,7 +175,7 @@ pub fn reply_dispatch_callback(deps: DepsMut, reply: Reply) -> Result<Response, 
     RESULTS.save(deps.storage, &results)?;
 
     // update result data if this is the last
-    let data = to_binary(&results)?;
+    let data = StdAck::success(&DispatchResponse { results });
     Ok(Response::new().set_data(data))
 }
 
@@ -256,7 +256,7 @@ fn receive_dispatch(
     let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
 
     // let them know we're fine
-    let response: DispatchResponse = ();
+    let response = DispatchResponse { results: vec![] };
     let acknowledgement = StdAck::success(&response);
     // create the message to re-dispatch to the reflect contract
     let reflect_msg = cw1_whitelist::msg::ExecuteMsg::Execute { msgs };

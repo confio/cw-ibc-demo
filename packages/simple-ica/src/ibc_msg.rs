@@ -57,9 +57,11 @@ impl StdAck {
     }
 }
 
-/// This is the success response we send on ack for PacketMsg::Dispatch.
-/// Just acknowledge success or error
-pub type DispatchResponse = ();
+/// Return the data field for each message
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct DispatchResponse {
+    pub results: Vec<Binary>,
+}
 
 /// This is the success response we send on ack for PacketMsg::WhoAmI.
 /// Return the caller's account address on the remote chain

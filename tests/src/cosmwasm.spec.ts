@@ -213,6 +213,43 @@ test.serial("control action on remote chain", async (t) => {
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
+  // TODO: check we get a vector here once we update result format
+
+  // ensure that the money was transfered
+  const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.deepEqual(gotFunds, sendFunds);
+});
+
+test.serial("handle errors on dispatch", async (t) => {
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
+
+  // there is an initial packet to relay for the whoami run
+  let info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // get the account info
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  const { remote_addr: remoteAddr, channel_id: channelId } = accounts[0];
+  assert(remoteAddr);
+  assert(channelId);
+
+  // send some osmo to the remote address (using another funded account there)
+  const initFunds = { amount: "2500600", denom: osmosis.denomFee };
+  await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
+
+  // make a new empty account on osmosis
+  const emptyAddr = randomAddress(osmosis.prefix);
+  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
+  t.is(noFunds.amount, "0");
+
+  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
+  const sendFunds = { amount: "1200300", denom: osmosis.denomFee };
+  await remoteBankSend(wasmClient, wasmController, channelId, emptyAddr, [sendFunds]);
+
+  // relay this over
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
   // Note: rethink the `{ ok: null }` message we get back on success
 
   // ensure that the money was transfered
