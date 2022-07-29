@@ -1,7 +1,6 @@
 use thiserror::Error;
 
 use cosmwasm_std::StdError;
-use cw_utils::ParseReplyError;
 
 use simple_ica::SimpleIcaError;
 
@@ -11,14 +10,11 @@ pub enum ContractError {
     Std(#[from] StdError),
 
     #[error("{0}")]
-    ParseReply(#[from] ParseReplyError),
-
-    #[error("{0}")]
     SimpleIca(#[from] SimpleIcaError),
 
-    #[error("Cannot register over an existing channel")]
-    ChannelAlreadyRegistered,
+    #[error("No account for channel {0}")]
+    UnregisteredChannel(String),
 
-    #[error("Invalid reply id")]
-    InvalidReplyId,
+    #[error("remote account changed from {old} to {addr}")]
+    RemoteAccountChanged { addr: String, old: String },
 }

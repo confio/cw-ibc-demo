@@ -1,7 +1,7 @@
 use cosmwasm_std::{
     entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdError, StdResult,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
 use simple_ica::{
@@ -96,7 +96,7 @@ pub fn ibc_packet_ack(
     deps: DepsMut,
     env: Env,
     msg: IbcPacketAckMsg,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // which local channel was this packet send from
     let caller = msg.original_packet.src.channel_id;
     // we need to parse the ack based on our request
@@ -123,7 +123,7 @@ fn acknowledge_dispatch(
     _deps: DepsMut,
     _caller: String,
     _ack: AcknowledgementMsg<DispatchResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
 }
@@ -134,7 +134,7 @@ fn acknowledge_who_am_i(
     deps: DepsMut,
     caller: String,
     ack: AcknowledgementMsg<WhoAmIResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let WhoAmIResponse { account } = match ack {
         AcknowledgementMsg::Ok(res) => res,
@@ -154,7 +154,7 @@ fn acknowledge_who_am_i(
                 }
                 Ok(acct)
             }
-            None => Err(StdError::generic_err("no account to update")),
+            None => Err(ContractError::UnregisteredChannel(caller.clone())),
         }
     })?;
 
@@ -167,7 +167,7 @@ fn acknowledge_balances(
     env: Env,
     caller: String,
     ack: AcknowledgementMsg<BalancesResponse>,
-) -> StdResult<IbcBasicResponse> {
+) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let BalancesResponse { account, balances } = match ack {
         AcknowledgementMsg::Ok(res) => res,
@@ -180,12 +180,9 @@ fn acknowledge_balances(
 
     ACCOUNTS.update(deps.storage, &caller, |acct| match acct {
         Some(acct) => {
-            if let Some(old_addr) = acct.remote_addr {
-                if old_addr != account {
-                    return Err(StdError::generic_err(format!(
-                        "remote account changed from {} to {}",
-                        old_addr, account
-                    )));
+            if let Some(old) = acct.remote_addr {
+                if old != account {
+                    return Err(ContractError::RemoteAccountChanged { old, addr: account });
                 }
             }
             Ok(AccountData {
@@ -194,7 +191,7 @@ fn acknowledge_balances(
                 remote_balance: balances,
             })
         }
-        None => Err(StdError::generic_err("no account to update")),
+        None => Err(ContractError::UnregisteredChannel(caller.clone())),
     })?;
 
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_balances"))
