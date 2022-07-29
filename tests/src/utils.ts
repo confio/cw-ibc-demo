@@ -54,7 +54,7 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
     }
     console.log(parsed);
     // Note: this may be empty in some cases (dispatch returns { ok: null })
-    // if (!parsed.ok) {
+    // if (!parsed.result) {
     //   throw new Error(`Ack result unexpectedly empty`);
     // }
   }
@@ -64,7 +64,7 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
 export function assertAckErrors(acks: AckWithMetadata[]) {
   for (const ack of acks) {
     const parsed = JSON.parse(fromUtf8(ack.acknowledgement));
-    if (parsed.ok) {
+    if (parsed.result) {
       throw new Error(`Ack result unexpectedly set`);
     }
     if (!parsed.error) {
