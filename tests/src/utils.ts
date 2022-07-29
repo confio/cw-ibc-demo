@@ -7,6 +7,8 @@ const { fundAccount, generateMnemonic, osmosis: oldOsmo, signingCosmWasmClient, 
 
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
+export const IbcVersion = "simple-ica-v1";
+
 export async function setupContracts(
   cosmwasm: CosmWasmSigner,
   contracts: Record<string, string>
@@ -50,9 +52,11 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
     if (parsed.error) {
       throw new Error(`Unexpected error in ack: ${parsed.error}`);
     }
-    if (!parsed.result) {
-      throw new Error(`Ack result unexpectedly empty`);
-    }
+    console.log(parsed);
+    // Note: this may be empty in some cases (dispatch returns { ok: null })
+    // if (!parsed.ok) {
+    //   throw new Error(`Ack result unexpectedly empty`);
+    // }
   }
 }
 
@@ -60,7 +64,7 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
 export function assertAckErrors(acks: AckWithMetadata[]) {
   for (const ack of acks) {
     const parsed = JSON.parse(fromUtf8(ack.acknowledgement));
-    if (parsed.result) {
+    if (parsed.ok) {
       throw new Error(`Ack result unexpectedly set`);
     }
     if (!parsed.error) {
