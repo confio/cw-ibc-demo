@@ -219,6 +219,7 @@ pub fn ibc_packet_receive(
     }
 }
 
+// TODO use query request for msgs here (empty custom)
 // processes IBC query
 fn receive_query(deps: Deps, msgs: Vec<WasmQuery>) -> Result<IbcReceiveResponse, ContractError> {
     let mut results = vec![];
