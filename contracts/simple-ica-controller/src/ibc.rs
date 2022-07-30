@@ -1,10 +1,13 @@
 use cosmwasm_std::{
     entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, WasmMsg,
 };
 
-use simple_ica::{check_order, check_version, BalancesResponse, PacketMsg, StdAck, WhoAmIResponse};
+use simple_ica::{
+    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIbcResponseMsg, StdAck,
+    WhoAmIResponse,
+};
 
 use crate::error::ContractError;
 use crate::state::{AccountData, ACCOUNTS};
@@ -97,14 +100,14 @@ pub fn ibc_packet_ack(
     // which local channel was this packet send from
     let caller = msg.original_packet.src.channel_id.clone();
     // we need to parse the ack based on our request
-    let packet: PacketMsg = from_slice(&msg.original_packet.data)?;
+    let original_packet: PacketMsg = from_slice(&msg.original_packet.data)?;
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
 
-    match packet {
-        PacketMsg::Dispatch { .. } => acknowledge_dispatch(deps, caller, res),
+    match original_packet {
+        PacketMsg::Dispatch { callback, .. } => acknowledge_dispatch(deps, caller, callback, msg),
+        PacketMsg::IbcQuery { callback, .. } => acknowledge_query(deps, caller, callback, msg),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
-        PacketMsg::IbcQuery { .. } => acknowledge_query(deps, caller, msg),
     }
 }
 
@@ -113,19 +116,49 @@ pub fn ibc_packet_ack(
 fn acknowledge_dispatch(
     _deps: DepsMut,
     _caller: String,
-    _ack: StdAck,
+    callback: Option<String>,
+    msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
-    Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
+    match callback {
+        Some(callback) => {
+            // Send IBC packet ack message to another contract
+            let msg = WasmMsg::Execute {
+                contract_addr: callback.clone(),
+                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
+                funds: vec![],
+            };
+            Ok(IbcBasicResponse::new()
+                .add_attribute("action", "acknowledge_dispatch")
+                .add_attribute("callback_address", callback)
+                .add_message(msg))
+        }
+        None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch")),
+    }
 }
 
 fn acknowledge_query(
     _deps: DepsMut,
     _caller: String,
-    _ack: IbcPacketAckMsg,
+    callback: Option<String>,
+    msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO store query? handle hooks?
-    Ok(IbcBasicResponse::new())
+    // TODO store query?
+    match callback {
+        Some(callback) => {
+            // Send IBC packet ack message to another contract
+            let msg = WasmMsg::Execute {
+                contract_addr: callback.clone(),
+                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
+                funds: vec![],
+            };
+            Ok(IbcBasicResponse::new()
+                .add_attribute("action", "acknowledge_ibc_query")
+                .add_attribute("callback_address", callback)
+                .add_message(msg))
+        }
+        None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_ibc_query")),
+    }
 }
 
 // receive PacketMsg::WhoAmI response
@@ -333,6 +366,7 @@ mod tests {
         let handle_msg = ExecuteMsg::SendMsgs {
             channel_id: channel_id.into(),
             msgs: msgs_to_dispatch,
+            callback: None,
         };
         let info = mock_info(CREATOR, &[]);
         let mut res = execute(deps.as_mut(), mock_env(), info, handle_msg).unwrap();

@@ -212,22 +212,18 @@ pub fn ibc_packet_receive(
     let caller = packet.dest.channel_id;
     let msg: PacketMsg = from_slice(&packet.data)?;
     match msg {
-        PacketMsg::Dispatch { msgs } => receive_dispatch(deps, caller, msgs),
-        PacketMsg::IbcQuery { msgs } => receive_query(deps.as_ref(), msgs),
+        PacketMsg::Dispatch { msgs, .. } => receive_dispatch(deps, caller, msgs),
+        PacketMsg::IbcQuery { msgs, .. } => receive_query(deps.as_ref(), msgs),
         PacketMsg::WhoAmI {} => receive_who_am_i(deps, caller),
         PacketMsg::Balances {} => receive_balances(deps, caller),
     }
 }
 
 // processes IBC query
-fn receive_query(
-    deps: Deps,
-    msgs: Vec<WasmQuery>,
-) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_query(deps: Deps, msgs: Vec<WasmQuery>) -> Result<IbcReceiveResponse, ContractError> {
     let mut results = vec![];
 
     for query in msgs {
-        // let query_payload = to_binary(&query)?;
         let res = deps.querier.query(&QueryRequest::Wasm(query))?;
         results.push(res);
     }

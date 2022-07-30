@@ -21,7 +21,7 @@ pub enum ExecuteMsg {
         // Note: we don't handle custom messages on remote chains
         msgs: Vec<CosmosMsg<Empty>>,
         // Optional callback
-        // callback: Option<String>,
+        callback: Option<String>,
     },
     CheckRemoteBalance {
         channel_id: String,
@@ -30,7 +30,7 @@ pub enum ExecuteMsg {
         channel_id: String,
         msgs: Vec<WasmQuery>,
         // Optional callback
-        // callback: Option<String>,
+        callback: Option<String>,
     },
     /// If you sent funds to this contract, it will attempt to ibc transfer them
     /// to the account on the remote side of this channel.
