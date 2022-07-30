@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Just needs to know the code_id of a reflect contract to spawn sub-accounts
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub reflect_code_id: u64,
+    pub cw1_code_id: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

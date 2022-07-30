@@ -95,7 +95,7 @@ pub fn ibc_packet_ack(
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // which local channel was this packet send from
-    let caller = msg.original_packet.src.channel_id;
+    let caller = msg.original_packet.src.channel_id.clone();
     // we need to parse the ack based on our request
     let packet: PacketMsg = from_slice(&msg.original_packet.data)?;
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
@@ -104,6 +104,7 @@ pub fn ibc_packet_ack(
         PacketMsg::Dispatch { .. } => acknowledge_dispatch(deps, caller, res),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
+        PacketMsg::IbcQuery { .. } => acknowledge_query(deps, caller, msg),
     }
 }
 
@@ -116,6 +117,15 @@ fn acknowledge_dispatch(
 ) -> Result<IbcBasicResponse, ContractError> {
     // TODO: actually handle success/error?
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch"))
+}
+
+fn acknowledge_query(
+    _deps: DepsMut,
+    _caller: String,
+    _ack: IbcPacketAckMsg,
+) -> Result<IbcBasicResponse, ContractError> {
+    // TODO store query? handle hooks?
+    Ok(IbcBasicResponse::new())
 }
 
 // receive PacketMsg::WhoAmI response

@@ -64,7 +64,7 @@ test.serial("set up channel with ics20 contract", async (t) => {
   // instantiate ica host on osmosis
   const osmoClient = await setupOsmosisClient();
   const initHost = {
-    reflect_code_id: osmosisIds.whitelist,
+    cw1_code_id: osmosisIds.whitelist,
   };
   const { contractAddress: osmoHost } = await osmoClient.sign.instantiate(
     osmoClient.senderAddress,
@@ -112,7 +112,7 @@ async function demoSetup(): Promise<SetupInfo> {
   // instantiate ica host on osmosis
   const osmoClient = await setupOsmosisClient();
   const initHost = {
-    reflect_code_id: osmosisIds.whitelist,
+    cw1_code_id: osmosisIds.whitelist,
   };
   const { contractAddress: osmoHost } = await osmoClient.sign.instantiate(
     osmoClient.senderAddress,

@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
-    QueryResponse, Response, StdError, StdResult,
+    QueryResponse, Response, StdError, StdResult, WasmQuery,
 };
 use simple_ica::PacketMsg;
 
@@ -34,6 +34,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         }
         ExecuteMsg::CheckRemoteBalance { channel_id } => {
             execute_check_remote_balance(deps, env, info, channel_id)
+        }
+        ExecuteMsg::IbcQuery { channel_id, msgs } => {
+            execute_ibc_query(deps, env, info, channel_id, msgs)
         }
         ExecuteMsg::SendFunds {
             reflect_channel_id,
@@ -86,6 +89,27 @@ pub fn execute_send_msgs(
     let res = Response::new()
         .add_message(msg)
         .add_attribute("action", "handle_send_msgs");
+    Ok(res)
+}
+
+pub fn execute_ibc_query(
+    _deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    channel_id: String,
+    msgs: Vec<WasmQuery>,
+) -> StdResult<Response> {
+    // construct a packet to send
+    let packet = PacketMsg::IbcQuery { msgs };
+    let msg = IbcMsg::SendPacket {
+        channel_id,
+        data: to_binary(&packet)?,
+        timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
+    };
+
+    let res = Response::new()
+        .add_message(msg)
+        .add_attribute("action", "handle_check_remote_balance");
     Ok(res)
 }
 

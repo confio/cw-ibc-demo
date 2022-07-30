@@ -1,4 +1,4 @@
-use cosmwasm_std::{from_slice, to_binary, Binary, Coin, CosmosMsg};
+use cosmwasm_std::{from_slice, to_binary, Binary, Coin, CosmosMsg, WasmQuery};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum PacketMsg {
     Dispatch { msgs: Vec<CosmosMsg> },
+    IbcQuery { msgs: Vec<WasmQuery> },
     WhoAmI {},
     Balances {},
 }
@@ -60,6 +61,12 @@ impl StdAck {
 /// Return the data field for each message
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct DispatchResponse {
+    pub results: Vec<Binary>,
+}
+
+/// Return the data field for each message
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct IbcQueryResponse {
     pub results: Vec<Binary>,
 }
 
