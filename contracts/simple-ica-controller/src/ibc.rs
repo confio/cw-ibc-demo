@@ -10,7 +10,7 @@ use simple_ica::{
 };
 
 use crate::error::ContractError;
-use crate::state::{AccountData, ACCOUNTS};
+use crate::state::{AccountData, IbcQueryResponse, ACCOUNTS, LATEST_QUERIES};
 
 // TODO: make configurable?
 /// packets live one hour
@@ -104,8 +104,10 @@ pub fn ibc_packet_ack(
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
 
     match original_packet {
-        PacketMsg::Dispatch { callback, .. } => acknowledge_dispatch(deps, caller, callback, msg),
-        PacketMsg::IbcQuery { callback, .. } => acknowledge_query(deps, caller, callback, msg),
+        PacketMsg::Dispatch { callback, .. } => {
+            acknowledge_dispatch(deps, env, caller, callback, msg)
+        }
+        PacketMsg::IbcQuery { callback, .. } => acknowledge_query(deps, env, caller, callback, msg),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
     }
@@ -115,6 +117,7 @@ pub fn ibc_packet_ack(
 #[allow(clippy::unnecessary_wraps)]
 fn acknowledge_dispatch(
     _deps: DepsMut,
+    _env: Env,
     _caller: String,
     callback: Option<String>,
     msg: IbcPacketAckMsg,
@@ -138,12 +141,21 @@ fn acknowledge_dispatch(
 }
 
 fn acknowledge_query(
-    _deps: DepsMut,
-    _caller: String,
+    deps: DepsMut,
+    env: Env,
+    caller: String,
     callback: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO store query?
+    // store IBC response for later querying from the smart contract??
+    LATEST_QUERIES.save(
+        deps.storage,
+        &caller,
+        &IbcQueryResponse {
+            last_update_time: env.block.time,
+            response: msg.clone(),
+        },
+    )?;
     match callback {
         Some(callback) => {
             // Send IBC packet ack message to another contract

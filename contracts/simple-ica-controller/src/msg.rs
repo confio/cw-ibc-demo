@@ -54,6 +54,8 @@ pub enum QueryMsg {
     ListAccounts {},
     // Get account for one channel
     Account { channel_id: String },
+    // Get latest query
+    LatestQueryResult { channel_id: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

@@ -9,7 +9,7 @@ use crate::msg::{
     AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse,
     QueryMsg,
 };
-use crate::state::{Config, ACCOUNTS, CONFIG};
+use crate::state::{Config, IbcQueryResponse, ACCOUNTS, CONFIG, LATEST_QUERIES};
 
 #[entry_point]
 pub fn instantiate(
@@ -201,12 +201,20 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
         QueryMsg::Account { channel_id } => to_binary(&query_account(deps, channel_id)?),
         QueryMsg::ListAccounts {} => to_binary(&query_list_accounts(deps)?),
+        QueryMsg::LatestQueryResult { channel_id } => {
+            to_binary(&query_latest_ibc_query_result(deps, channel_id)?)
+        }
     }
 }
 
 fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
     let account = ACCOUNTS.load(deps.storage, &channel_id)?;
     Ok(account.into())
+}
+
+fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<IbcQueryResponse> {
+    let results = LATEST_QUERIES.load(deps.storage, &channel_id)?;
+    Ok(results.into())
 }
 
 fn query_list_accounts(deps: Deps) -> StdResult<ListAccountsResponse> {

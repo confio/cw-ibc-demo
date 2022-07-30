@@ -22,7 +22,7 @@ pub struct AccountData {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct QueryData {
+pub struct IbcQueryResponse {
     /// last block balance was updated (0 is never)
     pub last_update_time: Timestamp,
     pub response: IbcPacketAckMsg,
@@ -30,4 +30,4 @@ pub struct QueryData {
 
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const ACCOUNTS: Map<&str, AccountData> = Map::new("accounts");
-pub const LATEST_QUERIES: Map<&str, QueryData> = Map::new("querys");
+pub const LATEST_QUERIES: Map<&str, IbcQueryResponse> = Map::new("querys");
