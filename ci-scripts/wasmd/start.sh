@@ -30,4 +30,4 @@ docker run --rm \
   --mount type=volume,source=wasmd_data,target=/root \
   "$REPOSITORY:$VERSION" \
   /opt/run.sh \
-  2>&1 | tee debug.log | grep 'executed block'
+  2>&1 | tee debug-wasmd.log | grep 'executed block'

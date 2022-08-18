@@ -8,6 +8,9 @@
 target/
 debug.log
 
+# Chain logs
+debug-*.log
+
 # IDEs
 .vscode/
 .idea/
