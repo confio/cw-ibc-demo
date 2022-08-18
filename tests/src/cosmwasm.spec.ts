@@ -363,7 +363,7 @@ test.serial("query remote chain", async (t) => {
     {
       ibc_query: {
         channel_id: channelId,
-        msgs: [{ smart: { msg: toBase64(toUtf8(JSON.stringify({ list_accounts: {} }))), contract_addr: osmoHost } }],
+        msgs: [{ smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } }],
       },
     },
     "auto"
