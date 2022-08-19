@@ -1,5 +1,5 @@
 {
-  "name": "ibc-tests-ics20",
+  "name": "ibc-tests-simple-ica",
   "version": "0.1.0",
   "description": "Simple repo showing how to use ts-relayer as a library to test cw20-ics20 contract",
   "browserslist": [
