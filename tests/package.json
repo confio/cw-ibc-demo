@@ -5,7 +5,6 @@
   "browserslist": [
     "maintained node versions"
   ],
-  "repository": "git@github.com:confio/ibc-tests-ics20.git",
   "author": "Ethan Frey <ethanfrey@users.noreply.github.com>",
   "license": "Apache-2.0",
   "private": false,
