@@ -381,7 +381,7 @@ test.serial("query remote chain", async (t) => {
   assert(badStored.response.error);
 });
 
-test.only("query with callback", async (t) => {
+test.serial("query with callback", async (t) => {
   const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
@@ -448,22 +448,21 @@ test.only("query with callback", async (t) => {
     t.deepEqual(storedBank, { amount: [initFunds] });
   }
 
-  // // Demo a failing query
-  // const badQuery = [{ wasm: { smart: { contract_addr: "no such contract", msg: "e30=" } } }];
-  // await ibcQuery(wasmClient, wasmController, channelId, badQuery);
-  // // this should return an error acknowledgement
-  // info = await link.relayAll();
-  // assertPacketsFromA(info, 1, false);
+  // Callback works for error case
+  const badQuery = [{ wasm: { smart: { contract_addr: "no such contract", msg: "e30=" } } }];
+  await callback.ibcQuery({ callbackId: "failure", channelId, msgs: badQuery });
+  // this should return an error acknowledgement
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
 
-  // // now query this is stored properly
-  // const badStored = await wasmClient.sign.queryContractSmart(wasmController, {
-  //   latest_query_result: { channel_id: channelId },
-  // });
-  // const secondTime = badStored.last_update_time;
-  // t.truthy(secondTime);
-  // t.notDeepEqual(firstTime, secondTime);
-  // t.log(badStored.response);
-  // assert(badStored.response.error);
+  // now ensure error callback is also stored in properly
+  const cb2 = await callback.result({ id: "failure" });
+  if (isSuccess(cb2.result)) {
+    t.fail(`expected error`);
+  } else {
+    t.log(cb2.result.error);
+    t.truthy(cb2.result.error);
+  }
 });
 
 function isSuccess(ack: StdAck): ack is { result: Binary } {
