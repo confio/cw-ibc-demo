@@ -102,3 +102,19 @@ export async function remoteCall(
   const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto");
   return res;
 }
+
+export async function ibcQuery(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  queries: unknown[]
+): Promise<ExecuteResult> {
+  const msg = {
+    ibc_query: {
+      channel_id: channelId,
+      msgs: queries,
+    },
+  };
+  const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto");
+  return res;
+}

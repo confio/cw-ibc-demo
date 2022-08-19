@@ -1,5 +1,5 @@
 import { CosmWasmSigner, Link, testutils } from "@confio/relayer";
-import { toBinary } from "@cosmjs/cosmwasm-stargate";
+// import { toBinary } from "@cosmjs/cosmwasm-stargate";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
@@ -10,6 +10,7 @@ const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 import {
   checkRemoteBalance,
   fundRemoteAccount,
+  ibcQuery,
   listAccounts,
   remoteBankMultiSend,
   remoteBankSend,
@@ -19,6 +20,7 @@ import {
   assertPacketsFromA,
   IbcVersion,
   parseAcknowledgementSuccess,
+  parseBinary,
   setupContracts,
   setupOsmosisClient,
   setupWasmClient,
@@ -319,7 +321,7 @@ test.serial("properly rollback first submessage if second fails", async (t) => {
 });
 
 test.serial("query remote chain", async (t) => {
-  const { wasmClient, wasmController, link, osmoClient, osmoHost } = await demoSetup();
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
   let info = await link.relayAll();
@@ -336,38 +338,54 @@ test.serial("query remote chain", async (t) => {
   const initFunds = { amount: "2500600", denom: osmosis.denomFee };
   await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
 
-  // make a new empty account on osmosis
-  const emptyAddr = randomAddress(osmosis.prefix);
-  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
-  t.is(noFunds.amount, "0");
-
-  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
-  const sendFunds = { amount: "1200300", denom: osmosis.denomFee };
-  await remoteBankSend(wasmClient, wasmController, channelId, emptyAddr, [sendFunds]);
+  // Use IBC queries to query account info from the remote contract
+  const bankQuery = [{ bank: { all_balances: { address: remoteAddr } } }];
+  await ibcQuery(wasmClient, wasmController, channelId, bankQuery);
 
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // TODO: add helper for this
-  const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
-  // check we get { results : ['']} (one message with no data)
-  t.deepEqual(contractData, { results: [""] });
+  // TODO: make parsing data clearer
+  const bankAck = parseAcknowledgementSuccess(info.acksFromB[0]);
+  assert(bankAck.results);
+  assert(bankAck.results.length === 1);
+  const parsedBank = parseBinary(bankAck.results[0]);
+  t.log(parsedBank);
+  t.deepEqual(parsedBank, { amount: [initFunds] });
 
-  // ensure that the money was transfered
-  const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
-  t.deepEqual(gotFunds, sendFunds);
+  // now query the latest query info stored
+  const bankStored = await wasmClient.sign.queryContractSmart(wasmController, {
+    latest_query_result: { channel_id: channelId },
+  });
+  t.log(bankStored);
+  const storedAck = parseBinary(bankStored.response.acknowledgement.data);
+  t.log(storedAck);
+  const storedSuccess = parseBinary(storedAck.result);
+  t.log(storedSuccess);
+  assert(storedSuccess.results);
+  assert(storedSuccess.results.length === 1);
+  const storedBank = parseBinary(storedSuccess.results[0]);
+  t.log(storedBank);
+  t.deepEqual(storedBank, { amount: [initFunds] });
 
-  // Use IBC queries to query account info from the remote contract
-  const ibcQuery = await wasmClient.sign.execute(
-    wasmClient.senderAddress,
-    wasmController,
-    {
-      ibc_query: {
-        channel_id: channelId,
-        msgs: [{ wasm: { smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } } }],
-      },
-    },
-    "auto"
-  );
-  console.log(ibcQuery);
+  // TODO: easier to get this data too
+
+  // // Demo a failing query
+  // const queries = [{ wasm: { smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } } }];
+  // const res = await ibcQuery(wasmClient, wasmController, channelId, queries);
+  // console.log(res);
+
+  // // relay this over
+  // info = await link.relayAll();
+  // assertPacketsFromA(info, 1, true);
+  // const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
+  // t.log(contractData);
+  // const parsed = parseBinary(contractData.results[0]);
+  // t.log(parsed);
+
+  // // now query the latest query info stored
+  // const query = await wasmClient.sign.queryContractSmart(wasmController, {
+  //   latest_query_result: { channel_id: channelId },
+  // });
+  // t.log(query);
 });
