@@ -11,14 +11,23 @@ use serde::{Deserialize, Serialize};
 pub enum PacketMsg {
     Dispatch {
         msgs: Vec<CosmosMsg>,
-        callback: Option<String>,
+        callback: Option<CallbackInfo>,
     },
     IbcQuery {
         msgs: Vec<WasmQuery>,
-        callback: Option<String>,
+        callback: Option<CallbackInfo>,
     },
     WhoAmI {},
     Balances {},
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub struct CallbackInfo {
+    /// This contract will get the ack message (original sender)
+    pub contract: String,
+    /// This is a caller-defined string that the original sender can use to identify the callback
+    pub id: String,
 }
 
 /// This is a generic ICS acknowledgement format.
@@ -70,6 +79,7 @@ impl StdAck {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct ReceiveIbcResponseMsg {
+    pub id: String,
     pub msg: IbcPacketAckMsg,
 }
 
