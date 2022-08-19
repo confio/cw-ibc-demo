@@ -7,13 +7,13 @@ command -v shellcheck >/dev/null && shellcheck "$0"
 
 # go to root dir regardless of where it was run
 SCRIPT_DIR="$(realpath "$(dirname "$0")")"
-cd ${SCRIPT_DIR}/..
+cd "${SCRIPT_DIR}/.."
 
 # compile all contracts
 for C in ./contracts/*/
 do
-  echo "Compiling `basename $C`..."
-  (cd $C && RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked)
+  echo "Compiling $(basename "$C")..."
+  (cd "$C" && RUSTFLAGS='-C link-arg=-s' cargo build --release --target wasm32-unknown-unknown --locked)
 done
 
 # move them to the internal dir inside tests
