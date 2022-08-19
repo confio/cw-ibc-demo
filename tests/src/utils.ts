@@ -8,7 +8,7 @@ const { fundAccount, generateMnemonic, osmosis: oldOsmo, signingCosmWasmClient, 
 
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
-export const IbcVersion = "simple-ica-v1";
+export const IbcVersion = "simple-ica-v2";
 
 export async function setupContracts(
   cosmwasm: CosmWasmSigner,
