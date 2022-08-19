@@ -2,7 +2,7 @@ use cosmwasm_std::{
     entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
     QueryResponse, Response, StdError, StdResult, WasmQuery,
 };
-use simple_ica::{CallbackInfo, PacketMsg};
+use simple_ica::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
 use crate::msg::{
@@ -84,11 +84,12 @@ pub fn execute_send_msgs(
     ACCOUNTS.load(deps.storage, &channel_id)?;
 
     // construct a packet to send
-    let callback = callback_id.map(|id| CallbackInfo {
-        id,
-        contract: info.sender.into(),
-    });
-    let packet = PacketMsg::Dispatch { msgs, callback };
+    let sender = info.sender.into();
+    let packet = PacketMsg::Dispatch {
+        sender,
+        msgs,
+        callback_id,
+    };
     let msg = IbcMsg::SendPacket {
         channel_id,
         data: to_binary(&packet)?,
@@ -110,11 +111,12 @@ pub fn execute_ibc_query(
     callback_id: Option<String>,
 ) -> StdResult<Response> {
     // construct a packet to send
-    let callback = callback_id.map(|id| CallbackInfo {
-        id,
-        contract: info.sender.into(),
-    });
-    let packet = PacketMsg::IbcQuery { msgs, callback };
+    let sender = info.sender.into();
+    let packet = PacketMsg::IbcQuery {
+        sender,
+        msgs,
+        callback_id,
+    };
     let msg = IbcMsg::SendPacket {
         channel_id,
         data: to_binary(&packet)?,

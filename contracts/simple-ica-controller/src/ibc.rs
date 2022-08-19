@@ -5,8 +5,8 @@ use cosmwasm_std::{
 };
 
 use simple_ica::{
-    check_order, check_version, BalancesResponse, CallbackInfo, PacketMsg, ReceiveIbcResponseMsg,
-    StdAck, WhoAmIResponse,
+    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIbcResponseMsg, StdAck,
+    WhoAmIResponse,
 };
 
 use crate::error::ContractError;
@@ -104,10 +104,16 @@ pub fn ibc_packet_ack(
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
 
     match original_packet {
-        PacketMsg::Dispatch { callback, .. } => {
-            acknowledge_dispatch(deps, env, caller, callback, msg)
-        }
-        PacketMsg::IbcQuery { callback, .. } => acknowledge_query(deps, env, caller, callback, msg),
+        PacketMsg::Dispatch {
+            sender,
+            callback_id,
+            ..
+        } => acknowledge_dispatch(deps, env, caller, sender, callback_id, msg),
+        PacketMsg::IbcQuery {
+            sender,
+            callback_id,
+            ..
+        } => acknowledge_query(deps, env, caller, sender, callback_id, msg),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
     }
@@ -119,14 +125,15 @@ fn acknowledge_dispatch(
     _deps: DepsMut,
     _env: Env,
     _caller: String,
-    callback: Option<CallbackInfo>,
+    sender: String,
+    callback_id: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    match callback {
-        Some(CallbackInfo { contract, id }) => {
+    match callback_id {
+        Some(id) => {
             // Send IBC packet ack message to another contract
             let msg = WasmMsg::Execute {
-                contract_addr: contract,
+                contract_addr: sender,
                 msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
                 funds: vec![],
             };
@@ -142,7 +149,8 @@ fn acknowledge_query(
     deps: DepsMut,
     env: Env,
     caller: String,
-    callback: Option<CallbackInfo>,
+    sender: String,
+    callback_id: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // store IBC response for later querying from the smart contract??
@@ -154,11 +162,11 @@ fn acknowledge_query(
             response: msg.clone(),
         },
     )?;
-    match callback {
-        Some(CallbackInfo { contract, id }) => {
+    match callback_id {
+        Some(id) => {
             // Send IBC packet ack message to another contract
             let msg = WasmMsg::Execute {
-                contract_addr: contract,
+                contract_addr: sender,
                 msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
                 funds: vec![],
             };
