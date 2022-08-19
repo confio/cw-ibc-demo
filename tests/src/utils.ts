@@ -53,7 +53,6 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
     if (parsed.error) {
       throw new Error(`Unexpected error in ack: ${parsed.error}`);
     }
-    console.log(parsed);
     if (!parsed.result) {
       throw new Error(`Ack result unexpectedly empty`);
     }

@@ -15,6 +15,10 @@ export interface AccountResponse {
   remote_balance: Coin[];
 }
 
+export interface QueryAck {
+  result: string[];
+}
+
 export async function listAccounts(cosmwasm: CosmWasmSigner, controllerAddr: string): Promise<AccountInfo[]> {
   const query = { list_accounts: {} };
   const res = await cosmwasm.sign.queryContractSmart(controllerAddr, query);

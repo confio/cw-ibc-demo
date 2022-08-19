@@ -345,47 +345,36 @@ test.serial("query remote chain", async (t) => {
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // TODO: make parsing data clearer
-  const bankAck = parseAcknowledgementSuccess(info.acksFromB[0]);
-  assert(bankAck.results);
-  assert(bankAck.results.length === 1);
-  const parsedBank = parseBinary(bankAck.results[0]);
-  t.log(parsedBank);
-  t.deepEqual(parsedBank, { amount: [initFunds] });
 
   // now query the latest query info stored
   const bankStored = await wasmClient.sign.queryContractSmart(wasmController, {
     latest_query_result: { channel_id: channelId },
   });
-  t.log(bankStored);
-  const storedAck = parseBinary(bankStored.response.acknowledgement.data);
-  t.log(storedAck);
-  const storedSuccess = parseBinary(storedAck.result);
+  const firstTime = bankStored.last_update_time;
+  t.truthy(firstTime);
+  assert(bankStored.response.result);
+  const storedSuccess = parseBinary(bankStored.response.result);
   t.log(storedSuccess);
   assert(storedSuccess.results);
-  assert(storedSuccess.results.length === 1);
+  t.is(storedSuccess.results.length, 1);
   const storedBank = parseBinary(storedSuccess.results[0]);
   t.log(storedBank);
   t.deepEqual(storedBank, { amount: [initFunds] });
 
-  // TODO: easier to get this data too
+  // Demo a failing query
+  const badQuery = [{ wasm: { smart: { contract_addr: "no such contract", msg: "e30=" } } }];
+  await ibcQuery(wasmClient, wasmController, channelId, badQuery);
+  // this should return an error acknowledgement
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
 
-  // // Demo a failing query
-  // const queries = [{ wasm: { smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } } }];
-  // const res = await ibcQuery(wasmClient, wasmController, channelId, queries);
-  // console.log(res);
-
-  // // relay this over
-  // info = await link.relayAll();
-  // assertPacketsFromA(info, 1, true);
-  // const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
-  // t.log(contractData);
-  // const parsed = parseBinary(contractData.results[0]);
-  // t.log(parsed);
-
-  // // now query the latest query info stored
-  // const query = await wasmClient.sign.queryContractSmart(wasmController, {
-  //   latest_query_result: { channel_id: channelId },
-  // });
-  // t.log(query);
+  // now query this is stored properly
+  const badStored = await wasmClient.sign.queryContractSmart(wasmController, {
+    latest_query_result: { channel_id: channelId },
+  });
+  const secondTime = badStored.last_update_time;
+  t.truthy(secondTime);
+  t.notDeepEqual(firstTime, secondTime);
+  t.log(badStored.response);
+  assert(badStored.response.error);
 });
