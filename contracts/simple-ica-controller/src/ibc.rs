@@ -129,19 +129,20 @@ fn acknowledge_dispatch(
     callback_id: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let res = IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch");
     match callback_id {
         Some(id) => {
             // Send IBC packet ack message to another contract
-            let msg = WasmMsg::Execute {
-                contract_addr: sender,
-                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
-                funds: vec![],
-            };
-            Ok(IbcBasicResponse::new()
-                .add_attribute("action", "acknowledge_dispatch")
-                .add_message(msg))
+            let res = res
+                .add_attribute("callback_id", &id)
+                .add_message(WasmMsg::Execute {
+                    contract_addr: sender,
+                    msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
+                    funds: vec![],
+                });
+            Ok(res)
         }
-        None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch")),
+        None => Ok(res),
     }
 }
 

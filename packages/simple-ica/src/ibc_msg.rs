@@ -72,6 +72,7 @@ impl StdAck {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct ReceiveIbcResponseMsg {
+    /// The ID chosen by the caller in the `callback_id`
     pub id: String,
     pub msg: IbcPacketAckMsg,
 }

@@ -32,16 +32,16 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::SendMsgs {
             channel_id,
             msgs,
-            callback_id: callback,
-        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback),
+            callback_id,
+        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::CheckRemoteBalance { channel_id } => {
             execute_check_remote_balance(deps, env, info, channel_id)
         }
         ExecuteMsg::IbcQuery {
             channel_id,
             msgs,
-            callback_id: callback,
-        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback),
+            callback_id,
+        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::SendFunds {
             reflect_channel_id,
             transfer_channel_id,
