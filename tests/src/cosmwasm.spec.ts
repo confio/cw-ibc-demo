@@ -30,6 +30,7 @@ let osmosisIds: Record<string, number> = {};
 test.before(async (t) => {
   console.debug("Upload contracts to wasmd...");
   const wasmContracts = {
+    callback: "./internal/callback_capturer.wasm",
     controller: "./internal/simple_ica_controller.wasm",
   };
   const wasmSign = await setupWasmClient();
@@ -363,7 +364,7 @@ test.serial("query remote chain", async (t) => {
     {
       ibc_query: {
         channel_id: channelId,
-        msgs: [{ smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } }],
+        msgs: [{ wasm: { smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } } }],
       },
     },
     "auto"

@@ -38,7 +38,7 @@ export async function fundRemoteAccount(
   ics20Channel: string,
   funds: Coin
 ): Promise<ExecuteResult> {
-  const msg = { send_funds: { reflect_channel_id: channelId, transfer_channel_id: ics20Channel } };
+  const msg = { send_funds: { ica_channel_id: channelId, transfer_channel_id: ics20Channel } };
   const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto", undefined, [funds]);
   return res;
 }
