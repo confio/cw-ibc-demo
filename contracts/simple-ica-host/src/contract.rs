@@ -3,7 +3,7 @@ use cosmwasm_std::{
     Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order, QueryRequest,
-    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg, WasmQuery,
+    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
@@ -219,13 +219,15 @@ pub fn ibc_packet_receive(
     }
 }
 
-// TODO use query request for msgs here (empty custom)
 // processes IBC query
-fn receive_query(deps: Deps, msgs: Vec<WasmQuery>) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_query(
+    deps: Deps,
+    msgs: Vec<QueryRequest<Empty>>,
+) -> Result<IbcReceiveResponse, ContractError> {
     let mut results = vec![];
 
     for query in msgs {
-        let res = deps.querier.query(&QueryRequest::Wasm(query))?;
+        let res = deps.querier.query(&query)?;
         results.push(res);
     }
     let response = IbcQueryResponse { results };

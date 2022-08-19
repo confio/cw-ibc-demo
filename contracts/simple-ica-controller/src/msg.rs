@@ -1,4 +1,4 @@
-use cosmwasm_std::{Coin, CosmosMsg, Empty, Timestamp, WasmQuery};
+use cosmwasm_std::{Coin, CosmosMsg, Empty, QueryRequest, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -28,7 +28,7 @@ pub enum ExecuteMsg {
     },
     IbcQuery {
         channel_id: String,
-        msgs: Vec<WasmQuery>,
+        msgs: Vec<QueryRequest<Empty>>,
         /// If set, the original caller will get a callback with of the result, along with this id
         callback_id: Option<String>,
     },

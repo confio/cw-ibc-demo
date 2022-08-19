@@ -1,7 +1,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{CosmosMsg, Empty, IbcPacketAckMsg, WasmQuery};
+use cosmwasm_std::{CosmosMsg, Empty, IbcPacketAckMsg, QueryRequest};
 use simple_ica::ReceiveIbcResponseMsg;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -24,7 +24,7 @@ pub enum ExecuteMsg {
     },
     IbcQuery {
         channel_id: String,
-        msgs: Vec<WasmQuery>,
+        msgs: Vec<QueryRequest<Empty>>,
         /// We store the the result under this id
         callback_id: String,
     },

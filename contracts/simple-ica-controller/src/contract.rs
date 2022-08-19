@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order, QueryResponse, Response,
-    StdError, StdResult, WasmQuery,
+    to_binary, CosmosMsg, Deps, DepsMut, Empty, Env, IbcMsg, MessageInfo, Order, QueryRequest,
+    QueryResponse, Response, StdError, StdResult,
 };
 
 use simple_ica::PacketMsg;
@@ -110,7 +110,7 @@ pub fn execute_ibc_query(
     env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<WasmQuery>,
+    msgs: Vec<QueryRequest<Empty>>,
     callback_id: Option<String>,
 ) -> StdResult<Response> {
     // construct a packet to send

@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
-    WasmMsg, WasmQuery,
+    to_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest, Response,
+    StdResult, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -94,7 +94,7 @@ pub fn execute_ibc_query(
     _env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<WasmQuery>,
+    msgs: Vec<QueryRequest<Empty>>,
     callback_id: String,
 ) -> Result<Response, ContractError> {
     let cfg = CONFIG.load(deps.storage)?;
@@ -209,168 +209,132 @@ pub fn query_query_result(deps: Deps, id: String) -> StdResult<QueryResultRespon
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, BankMsg, StakingMsg, SubMsg, WasmMsg};
+    use cosmwasm_std::{
+        coins, Addr, BankMsg, BankQuery, IbcAcknowledgement, IbcEndpoint, IbcPacket,
+        IbcPacketAckMsg, IbcTimeout, SubMsg, WasmMsg,
+    };
 
     #[test]
-    fn instantiate_and_modify_config() {
+    fn send_message_enforces_permissions() {
         let mut deps = mock_dependencies();
 
         let alice = "alice";
         let bob = "bob";
         let carl = "carl";
-
-        let anyone = "anyone";
-
-        // instantiate the contract
-        let instantiate_msg = InstantiateMsg {
-            admins: vec![alice.to_string(), bob.to_string(), carl.to_string()],
-            mutable: true,
-        };
-        let info = mock_info(anyone, &[]);
-        instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
-
-        // ensure expected config
-        let expected = AdminListResponse {
-            admins: vec![alice.to_string(), bob.to_string(), carl.to_string()],
-            mutable: true,
-        };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
-
-        // anyone cannot modify the contract
-        let msg = ExecuteMsg::UpdateAdmins {
-            admins: vec![anyone.to_string()],
-        };
-        let info = mock_info(anyone, &[]);
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
-
-        // but alice can kick out carl
-        let msg = ExecuteMsg::UpdateAdmins {
-            admins: vec![alice.to_string(), bob.to_string()],
-        };
-        let info = mock_info(alice, &[]);
-        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // ensure expected config
-        let expected = AdminListResponse {
-            admins: vec![alice.to_string(), bob.to_string()],
-            mutable: true,
-        };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
-
-        // carl cannot freeze it
-        let info = mock_info(carl, &[]);
-        let err = execute(deps.as_mut(), mock_env(), info, ExecuteMsg::Freeze {}).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
-
-        // but bob can
-        let info = mock_info(bob, &[]);
-        execute(deps.as_mut(), mock_env(), info, ExecuteMsg::Freeze {}).unwrap();
-        let expected = AdminListResponse {
-            admins: vec![alice.to_string(), bob.to_string()],
-            mutable: false,
-        };
-        assert_eq!(query_admin_list(deps.as_ref()).unwrap(), expected);
-
-        // and now alice cannot change it again
-        let msg = ExecuteMsg::UpdateAdmins {
-            admins: vec![alice.to_string()],
-        };
-        let info = mock_info(alice, &[]);
-        let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-        assert_eq!(err, ContractError::Unauthorized {});
-    }
-
-    #[test]
-    fn execute_messages_has_proper_permissions() {
-        let mut deps = mock_dependencies();
-
-        let alice = "alice";
-        let bob = "bob";
-        let carl = "carl";
+        let ica = "simple_ica";
+        let channel = "channel-23";
 
         // instantiate the contract
         let instantiate_msg = InstantiateMsg {
-            admins: vec![alice.to_string(), carl.to_string()],
-            mutable: false,
+            simple_ica_controller: ica.to_string(),
         };
-        let info = mock_info(bob, &[]);
+        let info = mock_info(alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
 
-        let freeze: ExecuteMsg<Empty> = ExecuteMsg::Freeze {};
-        let msgs = vec![
-            BankMsg::Send {
-                to_address: bob.to_string(),
-                amount: coins(10000, "DAI"),
-            }
-            .into(),
-            WasmMsg::Execute {
-                contract_addr: "some contract".into(),
-                msg: to_binary(&freeze).unwrap(),
-                funds: vec![],
-            }
-            .into(),
-        ];
-
-        // make some nice message
-        let execute_msg = ExecuteMsg::Execute { msgs: msgs.clone() };
+        // try to send without permissions
+        let msgs = vec![BankMsg::Send {
+            to_address: carl.to_string(),
+            amount: coins(10000, "DAI"),
+        }
+        .into()];
+        let execute_msg = ExecuteMsg::SendMsgs {
+            channel_id: channel.to_string(),
+            msgs: msgs.clone(),
+            callback_id: "test".to_string(),
+        };
 
         // bob cannot execute them
         let info = mock_info(bob, &[]);
         let err = execute(deps.as_mut(), mock_env(), info, execute_msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
-        // but carl can
-        let info = mock_info(carl, &[]);
+        // but alice can (original owner)
+        let info = mock_info(alice, &[]);
         let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
-        assert_eq!(
-            res.messages,
-            msgs.into_iter().map(SubMsg::new).collect::<Vec<_>>()
-        );
-        assert_eq!(res.attributes, [("action", "execute")]);
+        let expected = vec![SubMsg::new(WasmMsg::Execute {
+            contract_addr: ica.to_string(),
+            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::SendMsgs {
+                channel_id: channel.to_string(),
+                msgs,
+                callback_id: Some("test".to_string()),
+            })
+            .unwrap(),
+            funds: vec![],
+        })];
+        assert_eq!(res.messages, expected);
     }
 
     #[test]
-    fn can_execute_query_works() {
+    fn query_and_callback_work() {
         let mut deps = mock_dependencies();
 
         let alice = "alice";
         let bob = "bob";
-
-        let anyone = "anyone";
+        let ica = "simple_ica";
+        let channel = "channel-23";
+        let callback = "my-balance";
 
         // instantiate the contract
         let instantiate_msg = InstantiateMsg {
-            admins: vec![alice.to_string(), bob.to_string()],
-            mutable: false,
+            simple_ica_controller: ica.to_string(),
         };
-        let info = mock_info(anyone, &[]);
+        let info = mock_info(alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
 
-        // let us make some queries... different msg types by owner and by other
-        let send_msg = CosmosMsg::Bank(BankMsg::Send {
-            to_address: anyone.to_string(),
-            amount: coins(12345, "ushell"),
+        // try to send without permissions
+        let queries = vec![BankQuery::Balance {
+            address: bob.to_string(),
+            denom: "ujuno".to_string(),
+        }
+        .into()];
+        let execute_msg = ExecuteMsg::IbcQuery {
+            channel_id: channel.to_string(),
+            msgs: queries.clone(),
+            callback_id: callback.to_string(),
+        };
+
+        // alice can execute
+        let info = mock_info(alice, &[]);
+        let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
+        let expected = vec![SubMsg::new(WasmMsg::Execute {
+            contract_addr: ica.to_string(),
+            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::IbcQuery {
+                channel_id: channel.to_string(),
+                msgs: queries,
+                callback_id: Some(callback.to_string()),
+            })
+            .unwrap(),
+            funds: vec![],
+        })];
+        assert_eq!(res.messages, expected);
+
+        // we get a callback
+        let ack = IbcPacketAckMsg::new(
+            IbcAcknowledgement::new(b"my-balance-data"),
+            IbcPacket::new(
+                b"original-query-packet",
+                IbcEndpoint {
+                    port_id: "my-port".to_string(),
+                    channel_id: channel.to_string(),
+                },
+                IbcEndpoint {
+                    port_id: "their-port".to_string(),
+                    channel_id: "channel-123".to_string(),
+                },
+                17,
+                IbcTimeout::with_timestamp(mock_env().block.time),
+            ),
+            Addr::unchecked("relayer"),
+        );
+        let info = mock_info(ica, &[]);
+        let msg = ExecuteMsg::ReceiveIbcResponse(ReceiveIbcResponseMsg {
+            id: callback.to_string(),
+            msg: ack.clone(),
         });
-        let staking_msg = CosmosMsg::Staking(StakingMsg::Delegate {
-            validator: anyone.to_string(),
-            amount: coin(70000, "ureef"),
-        });
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
-        // owner can send
-        let res = query_can_execute(deps.as_ref(), alice.to_string(), send_msg.clone()).unwrap();
-        assert!(res.can_execute);
-
-        // owner can stake
-        let res = query_can_execute(deps.as_ref(), bob.to_string(), staking_msg.clone()).unwrap();
-        assert!(res.can_execute);
-
-        // anyone cannot send
-        let res = query_can_execute(deps.as_ref(), anyone.to_string(), send_msg).unwrap();
-        assert!(!res.can_execute);
-
-        // anyone cannot stake
-        let res = query_can_execute(deps.as_ref(), anyone.to_string(), staking_msg).unwrap();
-        assert!(!res.can_execute);
+        // now make sure we can query this
+        let data = query_query_result(deps.as_ref(), callback.to_string()).unwrap();
+        assert_eq!(data.query, ack);
     }
 }

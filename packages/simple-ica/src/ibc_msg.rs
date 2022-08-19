@@ -1,5 +1,6 @@
 use cosmwasm_std::{
-    from_slice, to_binary, Binary, Coin, CosmosMsg, IbcPacketAckMsg, StdResult, WasmMsg, WasmQuery,
+    from_slice, to_binary, Binary, Coin, CosmosMsg, Empty, IbcPacketAckMsg, QueryRequest,
+    StdResult, WasmMsg,
 };
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -16,7 +17,7 @@ pub enum PacketMsg {
     },
     IbcQuery {
         sender: String,
-        msgs: Vec<WasmQuery>,
+        msgs: Vec<QueryRequest<Empty>>,
         callback_id: Option<String>,
     },
     WhoAmI {},
