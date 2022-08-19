@@ -45,7 +45,7 @@ test.before(async (t) => {
   t.pass();
 });
 
-test.serial("set up channel with ics20 contract", async (t) => {
+test.serial("set up channel with ica contract", async (t) => {
   // instantiate ica controller on wasmd
   const wasmClient = await setupWasmClient();
   const initController = {};
