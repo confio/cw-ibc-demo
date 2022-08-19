@@ -9,10 +9,10 @@ use simple_ica::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
 use crate::msg::{
-    AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse,
-    QueryMsg,
+    AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, LatestQueryResponse,
+    ListAccountsResponse, QueryMsg,
 };
-use crate::state::{Config, IbcQueryResponse, ACCOUNTS, CONFIG, LATEST_QUERIES};
+use crate::state::{Config, ACCOUNTS, CONFIG, LATEST_QUERIES};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -225,7 +225,7 @@ fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
     Ok(account.into())
 }
 
-fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<IbcQueryResponse> {
+fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<LatestQueryResponse> {
     LATEST_QUERIES.load(deps.storage, &channel_id)
 }
 

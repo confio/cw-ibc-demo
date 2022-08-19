@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{Addr, Coin, IbcPacketAckMsg, Timestamp};
+use crate::msg::LatestQueryResponse;
+use cosmwasm_std::{Addr, Coin, Timestamp};
 use cw_storage_plus::{Item, Map};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -21,13 +22,6 @@ pub struct AccountData {
     pub remote_balance: Vec<Coin>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
-pub struct IbcQueryResponse {
-    /// last block balance was updated (0 is never)
-    pub last_update_time: Timestamp,
-    pub response: IbcPacketAckMsg,
-}
-
 pub const CONFIG: Item<Config> = Item::new("config");
 pub const ACCOUNTS: Map<&str, AccountData> = Map::new("accounts");
-pub const LATEST_QUERIES: Map<&str, IbcQueryResponse> = Map::new("querys");
+pub const LATEST_QUERIES: Map<&str, LatestQueryResponse> = Map::new("querys");

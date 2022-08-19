@@ -1,8 +1,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{CosmosMsg, Empty, IbcPacketAckMsg, QueryRequest};
-use simple_ica::ReceiveIbcResponseMsg;
+use cosmwasm_std::{CosmosMsg, Empty, QueryRequest};
+use simple_ica::{ReceiveIbcResponseMsg, StdAck};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -48,7 +48,7 @@ pub enum QueryMsg {
     /// Shows admin
     Admin {},
     // Get result for the given callback id
-    QueryResult {
+    Result {
         id: String,
     },
 }
@@ -59,6 +59,6 @@ pub struct AdminResponse {
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct QueryResultResponse {
-    pub query: IbcPacketAckMsg,
+pub struct ResultResponse {
+    pub result: StdAck,
 }

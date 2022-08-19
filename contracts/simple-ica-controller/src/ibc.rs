@@ -12,7 +12,8 @@ use simple_ica::{
 };
 
 use crate::error::ContractError;
-use crate::state::{AccountData, IbcQueryResponse, ACCOUNTS, LATEST_QUERIES};
+use crate::msg::LatestQueryResponse;
+use crate::state::{AccountData, ACCOUNTS, LATEST_QUERIES};
 
 // TODO: make configurable?
 /// packets live one hour
@@ -129,11 +130,13 @@ fn acknowledge_dispatch(
     _caller: String,
     sender: String,
     callback_id: Option<String>,
-    msg: IbcPacketAckMsg,
+    ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     let res = IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch");
     match callback_id {
         Some(id) => {
+            let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
+
             // Send IBC packet ack message to another contract
             let res = res
                 .add_attribute("callback_id", &id)
@@ -154,13 +157,15 @@ fn acknowledge_query(
     caller: String,
     sender: String,
     callback_id: Option<String>,
-    msg: IbcPacketAckMsg,
+    ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
+
     // store IBC response for later querying from the smart contract??
     LATEST_QUERIES.save(
         deps.storage,
         &caller,
-        &IbcQueryResponse {
+        &LatestQueryResponse {
             last_update_time: env.block.time,
             response: msg.clone(),
         },

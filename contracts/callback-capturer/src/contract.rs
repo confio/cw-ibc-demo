@@ -9,7 +9,7 @@ use cw2::set_contract_version;
 use simple_ica::ReceiveIbcResponseMsg;
 
 use crate::error::ContractError;
-use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, QueryResultResponse};
+use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, ResultResponse};
 use crate::state::{Config, CONFIG, RESULTS};
 
 // version info for migration info
@@ -189,7 +189,7 @@ pub fn execute_receive_ibc_response(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
-        QueryMsg::QueryResult { id } => to_binary(&query_query_result(deps, id)?),
+        QueryMsg::Result { id } => to_binary(&query_result(deps, id)?),
     }
 }
 
@@ -200,19 +200,17 @@ pub fn query_admin(deps: Deps) -> StdResult<AdminResponse> {
     })
 }
 
-pub fn query_query_result(deps: Deps, id: String) -> StdResult<QueryResultResponse> {
-    let query = RESULTS.load(deps.storage, &id)?;
-    Ok(QueryResultResponse { query })
+pub fn query_result(deps: Deps, id: String) -> StdResult<ResultResponse> {
+    let result = RESULTS.load(deps.storage, &id)?;
+    Ok(ResultResponse { result })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{
-        coins, Addr, BankMsg, BankQuery, IbcAcknowledgement, IbcEndpoint, IbcPacket,
-        IbcPacketAckMsg, IbcTimeout, SubMsg, WasmMsg,
-    };
+    use cosmwasm_std::{coins, BankMsg, BankQuery, SubMsg, WasmMsg};
+    use simple_ica::{IbcQueryResponse, StdAck};
 
     #[test]
     fn send_message_enforces_permissions() {
@@ -309,22 +307,11 @@ mod tests {
         assert_eq!(res.messages, expected);
 
         // we get a callback
-        let ack = IbcPacketAckMsg::new(
-            IbcAcknowledgement::new(b"my-balance-data"),
-            IbcPacket::new(
-                b"original-query-packet",
-                IbcEndpoint {
-                    port_id: "my-port".to_string(),
-                    channel_id: channel.to_string(),
-                },
-                IbcEndpoint {
-                    port_id: "their-port".to_string(),
-                    channel_id: "channel-123".to_string(),
-                },
-                17,
-                IbcTimeout::with_timestamp(mock_env().block.time),
-            ),
-            Addr::unchecked("relayer"),
+        let ack = StdAck::Result(
+            to_binary(&IbcQueryResponse {
+                results: vec![b"{}".into()],
+            })
+            .unwrap(),
         );
         let info = mock_info(ica, &[]);
         let msg = ExecuteMsg::ReceiveIbcResponse(ReceiveIbcResponseMsg {
@@ -334,7 +321,10 @@ mod tests {
         execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
         // now make sure we can query this
-        let data = query_query_result(deps.as_ref(), callback.to_string()).unwrap();
-        assert_eq!(data.query, ack);
+        let data = query_result(deps.as_ref(), callback.to_string()).unwrap();
+        assert_eq!(data.result, ack);
+        // and show how to parse those results
+        let result: IbcQueryResponse = data.result.unwrap_into();
+        assert_eq!(result.results, vec![Binary::from(b"{}")]);
     }
 }

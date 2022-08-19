@@ -1,6 +1,7 @@
 use cosmwasm_std::{Coin, CosmosMsg, Empty, QueryRequest, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use simple_ica::StdAck;
 
 use crate::state::AccountData;
 
@@ -66,6 +67,13 @@ pub struct AdminResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ListAccountsResponse {
     pub accounts: Vec<AccountInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LatestQueryResponse {
+    /// last block balance was updated (0 is never)
+    pub last_update_time: Timestamp,
+    pub response: StdAck,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
