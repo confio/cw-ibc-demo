@@ -32,9 +32,9 @@ in `simple-ica-host` and `simple-ica-controller`.
 To ensure they are proper, run the following in the repo root:
 
 ```shell
-cargo build
+cargo build --all-targets
+cargo clippy --all-targets
 cargo fmt
-cargo clippy --tests
 ```
 
 ## Unit Tests
@@ -55,4 +55,4 @@ cargo test
 
 ## Integration Tests
 
-TODO
+See [tests/README.md](tests/README.md)
