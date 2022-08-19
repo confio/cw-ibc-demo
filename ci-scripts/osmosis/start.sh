@@ -25,4 +25,4 @@ docker run --rm \
   --mount type=bind,source="$SCRIPT_DIR/template",target=/template \
   --mount type=volume,source=osmosis_data,target=/root \
   "$REPOSITORY:$VERSION" \
-  2>&1 | tee debug.log | grep 'executed block'
+  2>&1 | tee debug-osmosis.log | grep 'executed block'

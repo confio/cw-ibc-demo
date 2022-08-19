@@ -18,7 +18,7 @@ Run the following:
 scripts/osmosis/start.sh
 ```
 
-You get filtered output on the console. If it crashes and you want the full logs, look at `debug.log`.
+You get filtered output on the console. If it crashes and you want the full logs, look at `debug-osmosis.log`.
 
 ## Stopping the blockchain
 
