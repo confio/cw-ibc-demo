@@ -1,4 +1,4 @@
-use cosmwasm_std::{Coin, CosmosMsg, Empty, Timestamp};
+use cosmwasm_std::{Coin, CosmosMsg, Empty, Timestamp, WasmQuery};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -20,9 +20,17 @@ pub enum ExecuteMsg {
         channel_id: String,
         // Note: we don't handle custom messages on remote chains
         msgs: Vec<CosmosMsg<Empty>>,
+        // Optional callback
+        callback: Option<String>,
     },
     CheckRemoteBalance {
         channel_id: String,
+    },
+    IbcQuery {
+        channel_id: String,
+        msgs: Vec<WasmQuery>,
+        // Optional callback
+        callback: Option<String>,
     },
     /// If you sent funds to this contract, it will attempt to ibc transfer them
     /// to the account on the remote side of this channel.
@@ -46,6 +54,8 @@ pub enum QueryMsg {
     ListAccounts {},
     // Get account for one channel
     Account { channel_id: String },
+    // Get latest query
+    LatestQueryResult { channel_id: String },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

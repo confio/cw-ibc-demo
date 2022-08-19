@@ -2,13 +2,13 @@ use cosmwasm_std::{
     entry_point, from_slice, to_binary, wasm_execute, BankMsg, CosmosMsg, Deps, DepsMut, Empty,
     Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
     IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order,
-    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order, QueryRequest,
+    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg, WasmQuery,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
-    check_order, check_version, BalancesResponse, DispatchResponse, PacketMsg, StdAck,
-    WhoAmIResponse, IBC_APP_VERSION,
+    check_order, check_version, BalancesResponse, DispatchResponse, IbcQueryResponse, PacketMsg,
+    StdAck, WhoAmIResponse, IBC_APP_VERSION,
 };
 
 use crate::error::ContractError;
@@ -29,7 +29,7 @@ pub fn instantiate(
 ) -> StdResult<Response> {
     // we store the reflect_id for creating accounts later
     let cfg = Config {
-        reflect_code_id: msg.reflect_code_id,
+        cw1_code_id: msg.cw1_code_id,
     };
     CONFIG.save(deps.storage, &cfg)?;
 
@@ -104,7 +104,7 @@ pub fn ibc_channel_connect(
     };
     let msg = WasmMsg::Instantiate {
         admin: None,
-        code_id: cfg.reflect_code_id,
+        code_id: cfg.cw1_code_id,
         msg: to_binary(&init_msg)?,
         funds: vec![],
         label: format!("ibc-reflect-{}", chan_id),
@@ -135,7 +135,7 @@ pub fn ibc_channel_close(
     let reflect_addr = ACCOUNTS.load(deps.storage, channel_id)?;
     ACCOUNTS.remove(deps.storage, channel_id);
 
-    // transfer current balance if any (steal the money)
+    // transfer current balance if any to this host contract
     let amount = deps.querier.query_all_balances(&reflect_addr)?;
     let messages: Vec<SubMsg<Empty>> = if !amount.is_empty() {
         let bank_msg = BankMsg::Send {
@@ -150,13 +150,13 @@ pub fn ibc_channel_close(
     } else {
         vec![]
     };
-    let steal_funds = !messages.is_empty();
+    let rescue_funds = !messages.is_empty();
 
     Ok(IbcBasicResponse::new()
         .add_submessages(messages)
         .add_attribute("action", "ibc_close")
         .add_attribute("channel_id", channel_id)
-        .add_attribute("steal_funds", steal_funds.to_string()))
+        .add_attribute("rescue_funds", rescue_funds.to_string()))
 }
 
 #[entry_point]
@@ -212,10 +212,28 @@ pub fn ibc_packet_receive(
     let caller = packet.dest.channel_id;
     let msg: PacketMsg = from_slice(&packet.data)?;
     match msg {
-        PacketMsg::Dispatch { msgs } => receive_dispatch(deps, caller, msgs),
+        PacketMsg::Dispatch { msgs, .. } => receive_dispatch(deps, caller, msgs),
+        PacketMsg::IbcQuery { msgs, .. } => receive_query(deps.as_ref(), msgs),
         PacketMsg::WhoAmI {} => receive_who_am_i(deps, caller),
         PacketMsg::Balances {} => receive_balances(deps, caller),
     }
+}
+
+// TODO use query request for msgs here (empty custom)
+// processes IBC query
+fn receive_query(deps: Deps, msgs: Vec<WasmQuery>) -> Result<IbcReceiveResponse, ContractError> {
+    let mut results = vec![];
+
+    for query in msgs {
+        let res = deps.querier.query(&QueryRequest::Wasm(query))?;
+        results.push(res);
+    }
+    let response = IbcQueryResponse { results };
+
+    let acknowledgement = StdAck::success(&response);
+    Ok(IbcReceiveResponse::new()
+        .set_ack(acknowledgement)
+        .add_attribute("action", "receive_ibc_query"))
 }
 
 // processes PacketMsg::WhoAmI variant
@@ -317,7 +335,7 @@ mod tests {
     fn setup() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
         let mut deps = mock_dependencies();
         let msg = InstantiateMsg {
-            reflect_code_id: REFLECT_ID,
+            cw1_code_id: REFLECT_ID,
         };
         let info = mock_info(CREATOR, &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
@@ -377,9 +395,7 @@ mod tests {
     fn instantiate_works() {
         let mut deps = mock_dependencies();
 
-        let msg = InstantiateMsg {
-            reflect_code_id: 17,
-        };
+        let msg = InstantiateMsg { cw1_code_id: 17 };
         let info = mock_info("creator", &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len())
@@ -486,6 +502,7 @@ mod tests {
         .into()];
         let ibc_msg = PacketMsg::Dispatch {
             msgs: msgs_to_dispatch.clone(),
+            callback: None,
         };
         let msg = mock_ibc_packet_recv(channel_id, &ibc_msg).unwrap();
         // this returns an error
@@ -528,9 +545,7 @@ mod tests {
         }
 
         // invalid packet format on registered channel also returns error
-        let bad_data = InstantiateMsg {
-            reflect_code_id: 12345,
-        };
+        let bad_data = InstantiateMsg { cw1_code_id: 12345 };
         let msg = mock_ibc_packet_recv(channel_id, &bad_data).unwrap();
         ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap_err();
     }

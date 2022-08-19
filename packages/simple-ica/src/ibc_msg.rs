@@ -1,4 +1,6 @@
-use cosmwasm_std::{from_slice, to_binary, Binary, Coin, CosmosMsg};
+use cosmwasm_std::{
+    from_slice, to_binary, Binary, Coin, CosmosMsg, IbcPacketAckMsg, StdResult, WasmMsg, WasmQuery,
+};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -7,7 +9,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PacketMsg {
-    Dispatch { msgs: Vec<CosmosMsg> },
+    Dispatch {
+        msgs: Vec<CosmosMsg>,
+        callback: Option<String>,
+    },
+    IbcQuery {
+        msgs: Vec<WasmQuery>,
+        callback: Option<String>,
+    },
     WhoAmI {},
     Balances {},
 }
@@ -57,9 +66,52 @@ impl StdAck {
     }
 }
 
+/// ReceiveIbcResponseMsg should be de/serialized under `Receive()` variant in a ExecuteMsg
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+pub struct ReceiveIbcResponseMsg {
+    pub msg: IbcPacketAckMsg,
+}
+
+impl ReceiveIbcResponseMsg {
+    /// serializes the message
+    pub fn into_binary(self) -> StdResult<Binary> {
+        let msg = ReceiverExecuteMsg::ReceiveIbcResponse(self);
+        to_binary(&msg)
+    }
+
+    /// creates a cosmos_msg sending this struct to the named contract
+    pub fn into_cosmos_msg<T: Into<String>, C>(self, contract_addr: T) -> StdResult<CosmosMsg<C>>
+    where
+        C: Clone + std::fmt::Debug + PartialEq + JsonSchema,
+    {
+        let msg = self.into_binary()?;
+        let execute = WasmMsg::Execute {
+            contract_addr: contract_addr.into(),
+            msg,
+            funds: vec![],
+        };
+        Ok(execute.into())
+    }
+}
+
+/// This is just a helper to properly serialize the above message.
+/// The actual receiver should include this variant in the larger ExecuteMsg enum
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+#[serde(rename_all = "snake_case")]
+enum ReceiverExecuteMsg {
+    ReceiveIbcResponse(ReceiveIbcResponseMsg),
+}
+
 /// Return the data field for each message
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct DispatchResponse {
+    pub results: Vec<Binary>,
+}
+
+/// Return the data field for each message
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub struct IbcQueryResponse {
     pub results: Vec<Binary>,
 }
 

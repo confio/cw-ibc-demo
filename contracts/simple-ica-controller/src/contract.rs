@@ -1,6 +1,6 @@
 use cosmwasm_std::{
     entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
-    QueryResponse, Response, StdError, StdResult,
+    QueryResponse, Response, StdError, StdResult, WasmQuery,
 };
 use simple_ica::PacketMsg;
 
@@ -9,7 +9,7 @@ use crate::msg::{
     AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse,
     QueryMsg,
 };
-use crate::state::{Config, ACCOUNTS, CONFIG};
+use crate::state::{Config, IbcQueryResponse, ACCOUNTS, CONFIG, LATEST_QUERIES};
 
 #[entry_point]
 pub fn instantiate(
@@ -29,12 +29,19 @@ pub fn instantiate(
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
         ExecuteMsg::UpdateAdmin { admin } => execute_update_admin(deps, info, admin),
-        ExecuteMsg::SendMsgs { channel_id, msgs } => {
-            execute_send_msgs(deps, env, info, channel_id, msgs)
-        }
+        ExecuteMsg::SendMsgs {
+            channel_id,
+            msgs,
+            callback,
+        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback),
         ExecuteMsg::CheckRemoteBalance { channel_id } => {
             execute_check_remote_balance(deps, env, info, channel_id)
         }
+        ExecuteMsg::IbcQuery {
+            channel_id,
+            msgs,
+            callback,
+        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback),
         ExecuteMsg::SendFunds {
             reflect_channel_id,
             transfer_channel_id,
@@ -66,6 +73,7 @@ pub fn execute_send_msgs(
     info: MessageInfo,
     channel_id: String,
     msgs: Vec<CosmosMsg>,
+    callback: Option<String>,
 ) -> StdResult<Response> {
     // auth check
     let cfg = CONFIG.load(deps.storage)?;
@@ -76,7 +84,7 @@ pub fn execute_send_msgs(
     ACCOUNTS.load(deps.storage, &channel_id)?;
 
     // construct a packet to send
-    let packet = PacketMsg::Dispatch { msgs };
+    let packet = PacketMsg::Dispatch { msgs, callback };
     let msg = IbcMsg::SendPacket {
         channel_id,
         data: to_binary(&packet)?,
@@ -86,6 +94,28 @@ pub fn execute_send_msgs(
     let res = Response::new()
         .add_message(msg)
         .add_attribute("action", "handle_send_msgs");
+    Ok(res)
+}
+
+pub fn execute_ibc_query(
+    _deps: DepsMut,
+    env: Env,
+    _info: MessageInfo,
+    channel_id: String,
+    msgs: Vec<WasmQuery>,
+    callback: Option<String>,
+) -> StdResult<Response> {
+    // construct a packet to send
+    let packet = PacketMsg::IbcQuery { msgs, callback };
+    let msg = IbcMsg::SendPacket {
+        channel_id,
+        data: to_binary(&packet)?,
+        timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
+    };
+
+    let res = Response::new()
+        .add_message(msg)
+        .add_attribute("action", "handle_check_remote_balance");
     Ok(res)
 }
 
@@ -171,12 +201,20 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
         QueryMsg::Account { channel_id } => to_binary(&query_account(deps, channel_id)?),
         QueryMsg::ListAccounts {} => to_binary(&query_list_accounts(deps)?),
+        QueryMsg::LatestQueryResult { channel_id } => {
+            to_binary(&query_latest_ibc_query_result(deps, channel_id)?)
+        }
     }
 }
 
 fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
     let account = ACCOUNTS.load(deps.storage, &channel_id)?;
     Ok(account.into())
+}
+
+fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<IbcQueryResponse> {
+    let results = LATEST_QUERIES.load(deps.storage, &channel_id)?;
+    Ok(results.into())
 }
 
 fn query_list_accounts(deps: Deps) -> StdResult<ListAccountsResponse> {
