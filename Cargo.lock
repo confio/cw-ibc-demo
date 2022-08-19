@@ -61,6 +61,7 @@ dependencies = [
  "derivative",
  "schemars",
  "serde",
+ "simple-ica",
  "simple-ica-controller",
  "thiserror",
 ]

@@ -16,6 +16,7 @@ library = []
 
 [dependencies]
 simple-ica-controller = { version = "0.1.0", path = "../simple-ica-controller", features = ["library"] }
+simple-ica = { version = "0.1.0", path = "../../packages/simple-ica" }
 cw-utils = { version = "0.14.0" }
 cw2 = { version = "0.14.0" }
 cw-storage-plus = { version = "0.14.0" }

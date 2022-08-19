@@ -4,7 +4,7 @@ use std::fs::create_dir_all;
 use cosmwasm_schema::{export_schema, export_schema_with_title, remove_schemas, schema_for};
 
 use callback_capturer::msg::{
-    AdminResponse, ExecuteMsg, InstantiateMsg, MessageResultResponse, QueryMsg, QueryResultResponse,
+    AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, QueryResultResponse,
 };
 
 fn main() {
@@ -17,6 +17,5 @@ fn main() {
     export_schema_with_title(&schema_for!(ExecuteMsg), &out_dir, "ExecuteMsg");
     export_schema_with_title(&schema_for!(QueryMsg), &out_dir, "QueryMsg");
     export_schema(&schema_for!(AdminResponse), &out_dir);
-    export_schema(&schema_for!(MessageResultResponse), &out_dir);
     export_schema(&schema_for!(QueryResultResponse), &out_dir);
 }

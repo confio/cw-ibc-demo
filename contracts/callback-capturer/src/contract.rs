@@ -6,12 +6,11 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
+use simple_ica::ReceiveIbcResponseMsg;
 
 use crate::error::ContractError;
-use crate::msg::{
-    AdminResponse, ExecuteMsg, InstantiateMsg, MessageResultResponse, QueryMsg, QueryResultResponse,
-};
-use crate::state::{Config, CONFIG, MESSAGE_RESULT, QUERY_RESULT};
+use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, QueryResultResponse};
+use crate::state::{Config, CONFIG, RESULTS};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:callback-capturer";
@@ -58,6 +57,7 @@ pub fn execute(
             ica_channel_id,
             transfer_channel_id,
         } => execute_send_funds(deps, env, info, ica_channel_id, transfer_channel_id),
+        ExecuteMsg::ReceiveIbcResponse(resp) => execute_receive_ibc_response(deps, env, info, resp),
     }
 }
 
@@ -165,12 +165,31 @@ pub fn execute_send_funds(
     Ok(res)
 }
 
+pub fn execute_receive_ibc_response(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    resp: ReceiveIbcResponseMsg,
+) -> Result<Response, ContractError> {
+    // only the simple ica controller can send this message as callback
+    let cfg = CONFIG.load(deps.storage)?;
+    if !cfg.simple_ica_controller.eq(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    RESULTS.save(deps.storage, &resp.id, &resp.msg)?;
+
+    let res = Response::new()
+        .add_attribute("action", "receive_callback")
+        .add_attribute("id", resp.id);
+    Ok(res)
+}
+
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
         QueryMsg::QueryResult { id } => to_binary(&query_query_result(deps, id)?),
-        QueryMsg::MessageResult { id } => to_binary(&query_message_result(deps, id)?),
     }
 }
 
@@ -182,13 +201,8 @@ pub fn query_admin(deps: Deps) -> StdResult<AdminResponse> {
 }
 
 pub fn query_query_result(deps: Deps, id: String) -> StdResult<QueryResultResponse> {
-    let query = QUERY_RESULT.load(deps.storage, &id)?;
+    let query = RESULTS.load(deps.storage, &id)?;
     Ok(QueryResultResponse { query })
-}
-
-pub fn query_message_result(deps: Deps, id: String) -> StdResult<MessageResultResponse> {
-    let msg = MESSAGE_RESULT.load(deps.storage, &id)?;
-    Ok(MessageResultResponse { msg })
 }
 
 #[cfg(test)]
