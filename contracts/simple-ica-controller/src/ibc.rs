@@ -3,7 +3,7 @@ use cosmwasm_std::entry_point;
 use cosmwasm_std::{
     from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, WasmMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
 use simple_ica::{
@@ -136,15 +136,10 @@ fn acknowledge_dispatch(
     match callback_id {
         Some(id) => {
             let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
-
             // Send IBC packet ack message to another contract
             let res = res
                 .add_attribute("callback_id", &id)
-                .add_message(WasmMsg::Execute {
-                    contract_addr: sender,
-                    msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
-                    funds: vec![],
-                });
+                .add_message(ReceiveIbcResponseMsg { id, msg }.into_cosmos_msg(sender)?);
             Ok(res)
         }
         None => Ok(res),
@@ -173,11 +168,7 @@ fn acknowledge_query(
     match callback_id {
         Some(id) => {
             // Send IBC packet ack message to another contract
-            let msg = WasmMsg::Execute {
-                contract_addr: sender,
-                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
-                funds: vec![],
-            };
+            let msg = ReceiveIbcResponseMsg { id, msg }.into_cosmos_msg(sender)?;
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_ibc_query")
                 .add_message(msg))
