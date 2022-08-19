@@ -502,6 +502,7 @@ mod tests {
         .into()];
         let ibc_msg = PacketMsg::Dispatch {
             msgs: msgs_to_dispatch.clone(),
+            callback: None,
         };
         let msg = mock_ibc_packet_recv(channel_id, &ibc_msg).unwrap();
         // this returns an error
