@@ -5,8 +5,8 @@ use cosmwasm_std::{
 };
 
 use simple_ica::{
-    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIbcResponseMsg, StdAck,
-    WhoAmIResponse,
+    check_order, check_version, BalancesResponse, CallbackInfo, PacketMsg, ReceiveIbcResponseMsg,
+    StdAck, WhoAmIResponse,
 };
 
 use crate::error::ContractError;
@@ -119,21 +119,19 @@ fn acknowledge_dispatch(
     _deps: DepsMut,
     _env: Env,
     _caller: String,
-    callback: Option<String>,
+    callback: Option<CallbackInfo>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO: actually handle success/error?
     match callback {
-        Some(callback) => {
+        Some(CallbackInfo { contract, id }) => {
             // Send IBC packet ack message to another contract
             let msg = WasmMsg::Execute {
-                contract_addr: callback.clone(),
-                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
+                contract_addr: contract,
+                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
                 funds: vec![],
             };
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_dispatch")
-                .add_attribute("callback_address", callback)
                 .add_message(msg))
         }
         None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch")),
@@ -144,7 +142,7 @@ fn acknowledge_query(
     deps: DepsMut,
     env: Env,
     caller: String,
-    callback: Option<String>,
+    callback: Option<CallbackInfo>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // store IBC response for later querying from the smart contract??
@@ -157,16 +155,15 @@ fn acknowledge_query(
         },
     )?;
     match callback {
-        Some(callback) => {
+        Some(CallbackInfo { contract, id }) => {
             // Send IBC packet ack message to another contract
             let msg = WasmMsg::Execute {
-                contract_addr: callback.clone(),
-                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
+                contract_addr: contract,
+                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
                 funds: vec![],
             };
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_ibc_query")
-                .add_attribute("callback_address", callback)
                 .add_message(msg))
         }
         None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_ibc_query")),
@@ -378,7 +375,7 @@ mod tests {
         let handle_msg = ExecuteMsg::SendMsgs {
             channel_id: channel_id.into(),
             msgs: msgs_to_dispatch,
-            callback: None,
+            callback_id: None,
         };
         let info = mock_info(CREATOR, &[]);
         let mut res = execute(deps.as_mut(), mock_env(), info, handle_msg).unwrap();
