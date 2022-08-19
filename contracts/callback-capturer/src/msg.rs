@@ -1,81 +1,71 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
-use cosmwasm_std::{CosmosMsg, Empty};
+use cosmwasm_std::{CosmosMsg, Empty, IbcPacketAckMsg, WasmQuery};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub admins: Vec<String>,
-    pub mutable: bool,
+    pub simple_ica_controller: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum ExecuteMsg<T = Empty>
-where
-    T: Clone + fmt::Debug + PartialEq + JsonSchema,
-{
-    /// Execute requests the contract to re-dispatch all these messages with the
-    /// contract's address as sender. Every implementation has it's own logic to
-    /// determine in
-    Execute { msgs: Vec<CosmosMsg<T>> },
-    /// Freeze will make a mutable contract immutable, must be called by an admin
-    Freeze {},
-    /// UpdateAdmins will change the admin set of the contract, must be called by an existing admin,
-    /// and only works if the contract is mutable
-    UpdateAdmins { admins: Vec<String> },
+pub enum ExecuteMsg {
+    SendMsgs {
+        channel_id: String,
+        /// Note: we don't handle custom messages on remote chains
+        msgs: Vec<CosmosMsg<Empty>>,
+        /// We store the the result under this id
+        callback_id: String,
+    },
+    CheckRemoteBalance {
+        channel_id: String,
+    },
+    IbcQuery {
+        channel_id: String,
+        msgs: Vec<WasmQuery>,
+        /// We store the the result under this id
+        callback_id: String,
+    },
+    /// If you sent funds to this contract, it will attempt to ibc transfer them
+    /// to the account on the remote side of this channel.
+    /// If we don't have the address yet, this fails.
+    SendFunds {
+        /// The channel id we use above to send the simple-ica query on
+        ica_channel_id: String,
+        /// The channel to use for ibctransfer. This is bound to a different
+        /// port and handled by a different module.
+        /// It should connect to the same chain as the ica_channel_id does
+        transfer_channel_id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
-pub enum QueryMsg<T = Empty>
-where
-    T: Clone + fmt::Debug + PartialEq + JsonSchema,
-{
-    /// Shows all admins and whether or not it is mutable
-    AdminList {},
-    /// Checks permissions of the caller on this proxy.
-    /// If CanExecute returns true then a call to `Execute` with the same message,
-    /// before any further state changes, should also succeed.
-    CanExecute { sender: String, msg: CosmosMsg<T> },
+pub enum QueryMsg {
+    /// Shows admin
+    Admin {},
+    // Get query result for the given callback id
+    QueryResult {
+        id: String,
+    },
+    // Get message result for the given callback id
+    MessageResult {
+        id: String,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
-pub struct AdminListResponse {
-    pub admins: Vec<String>,
-    pub mutable: bool,
+pub struct AdminResponse {
+    pub admin: String,
 }
 
-#[cfg(any(test, feature = "test-utils"))]
-impl AdminListResponse {
-    /// Utility function forconverting message to its canonical form, so two messages with
-    /// different representation but same semantical meaning can be easly compared.
-    ///
-    /// It could be encapsulated in custom `PartialEq` implementation, but `PartialEq` is expected
-    /// to be quickly, so it seems to be reasonable to keep it as representation-equality, and
-    /// canonicalize message only when it is needed
-    ///
-    /// Example:
-    ///
-    /// ```
-    /// # use cw1_whitelist::msg::AdminListResponse;
-    ///
-    /// let resp1 = AdminListResponse {
-    ///   admins: vec!["admin1".to_owned(), "admin2".to_owned()],
-    ///   mutable: true,
-    /// };
-    ///
-    /// let resp2 = AdminListResponse {
-    ///   admins: vec!["admin2".to_owned(), "admin1".to_owned(), "admin2".to_owned()],
-    ///   mutable: true,
-    /// };
-    ///
-    /// assert_eq!(resp1.canonical(), resp2.canonical());
-    /// ```
-    pub fn canonical(mut self) -> Self {
-        self.admins.sort();
-        self.admins.dedup();
-        self
-    }
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct QueryResultResponse {
+    pub query: IbcPacketAckMsg,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
+pub struct MessageResultResponse {
+    pub msg: IbcPacketAckMsg,
 }

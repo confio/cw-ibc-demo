@@ -15,12 +15,12 @@ backtraces = ["cosmwasm-std/backtraces"]
 library = []
 
 [dependencies]
-cosmwasm-schema = { version = "1.0.0" }
+simple-ica-controller = { version = "0.1.0", path = "../simple-ica-controller", features = ["library"] }
 cw-utils = { version = "0.14.0" }
-cw1 = { version = "0.14.0" }
 cw2 = { version = "0.14.0" }
-cosmwasm-std = { version = "1.0.0", features = ["staking"] }
 cw-storage-plus = { version = "0.14.0" }
+cosmwasm-schema = { version = "1.0.0" }
+cosmwasm-std = { version = "1.0.0", features = ["staking", "stargate"] }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
@@ -28,5 +28,4 @@ thiserror = { version = "1.0.23" }
 [dev-dependencies]
 anyhow = "1"
 assert_matches = "1"
-cw-multi-test = { version = "0.14.0" }
 derivative = "2"

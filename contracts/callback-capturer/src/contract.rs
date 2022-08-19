@@ -1,42 +1,36 @@
-use schemars::JsonSchema;
-use std::fmt;
-
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Addr, Api, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Response,
-    StdResult,
+    to_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, Response, StdResult,
+    WasmMsg, WasmQuery,
 };
 
-use cw1::CanExecuteResponse;
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::msg::{AdminListResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{AdminList, ADMIN_LIST};
+use crate::msg::{
+    AdminResponse, ExecuteMsg, InstantiateMsg, MessageResultResponse, QueryMsg, QueryResultResponse,
+};
+use crate::state::{Config, CONFIG, MESSAGE_RESULT, QUERY_RESULT};
 
 // version info for migration info
-const CONTRACT_NAME: &str = "crates.io:cw1-whitelist";
+const CONTRACT_NAME: &str = "crates.io:callback-capturer";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: InstantiateMsg,
 ) -> StdResult<Response> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
-    let cfg = AdminList {
-        admins: map_validate(deps.api, &msg.admins)?,
-        mutable: msg.mutable,
+    let cfg = Config {
+        admin: info.sender,
+        simple_ica_controller: deps.api.addr_validate(&msg.simple_ica_controller)?,
     };
-    ADMIN_LIST.save(deps.storage, &cfg)?;
+    CONFIG.save(deps.storage, &cfg)?;
     Ok(Response::default())
-}
-
-pub fn map_validate(api: &dyn Api, admins: &[String]) -> StdResult<Vec<Addr>> {
-    admins.iter().map(|addr| api.addr_validate(addr)).collect()
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -44,101 +38,157 @@ pub fn execute(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    // Note: implement this function with different type to add support for custom messages
-    // and then import the rest of this contract code.
-    msg: ExecuteMsg<Empty>,
-) -> Result<Response<Empty>, ContractError> {
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Execute { msgs } => execute_execute(deps, env, info, msgs),
-        ExecuteMsg::Freeze {} => execute_freeze(deps, env, info),
-        ExecuteMsg::UpdateAdmins { admins } => execute_update_admins(deps, env, info, admins),
+        ExecuteMsg::SendMsgs {
+            channel_id,
+            msgs,
+            callback_id,
+        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback_id),
+        ExecuteMsg::IbcQuery {
+            channel_id,
+            msgs,
+            callback_id,
+        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
+        ExecuteMsg::CheckRemoteBalance { channel_id } => {
+            execute_check_remote_balance(deps, env, info, channel_id)
+        }
+        ExecuteMsg::SendFunds {
+            ica_channel_id,
+            transfer_channel_id,
+        } => execute_send_funds(deps, env, info, ica_channel_id, transfer_channel_id),
     }
 }
 
-pub fn execute_execute<T>(
+pub fn execute_send_msgs(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    msgs: Vec<CosmosMsg<T>>,
-) -> Result<Response<T>, ContractError>
-where
-    T: Clone + fmt::Debug + PartialEq + JsonSchema,
-{
-    if !can_execute(deps.as_ref(), info.sender.as_ref())? {
-        Err(ContractError::Unauthorized {})
-    } else {
-        let res = Response::new()
-            .add_messages(msgs)
-            .add_attribute("action", "execute");
-        Ok(res)
-    }
-}
-
-pub fn execute_freeze(
-    deps: DepsMut,
-    _env: Env,
-    info: MessageInfo,
+    channel_id: String,
+    msgs: Vec<CosmosMsg<Empty>>,
+    callback_id: String,
 ) -> Result<Response, ContractError> {
-    let mut cfg = ADMIN_LIST.load(deps.storage)?;
-    if !cfg.can_modify(info.sender.as_ref()) {
-        Err(ContractError::Unauthorized {})
-    } else {
-        cfg.mutable = false;
-        ADMIN_LIST.save(deps.storage, &cfg)?;
-
-        let res = Response::new().add_attribute("action", "freeze");
-        Ok(res)
+    let cfg = CONFIG.load(deps.storage)?;
+    if !cfg.admin.eq(&info.sender) {
+        return Err(ContractError::Unauthorized {});
     }
+
+    let ica_msg = simple_ica_controller::msg::ExecuteMsg::SendMsgs {
+        channel_id,
+        msgs,
+        callback_id: Some(callback_id),
+    };
+    let msg = WasmMsg::Execute {
+        contract_addr: cfg.simple_ica_controller.into(),
+        msg: to_binary(&ica_msg)?,
+        funds: vec![],
+    };
+
+    let res = Response::new().add_message(msg);
+    Ok(res)
 }
 
-pub fn execute_update_admins(
+pub fn execute_ibc_query(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    admins: Vec<String>,
+    channel_id: String,
+    msgs: Vec<WasmQuery>,
+    callback_id: String,
 ) -> Result<Response, ContractError> {
-    let mut cfg = ADMIN_LIST.load(deps.storage)?;
-    if !cfg.can_modify(info.sender.as_ref()) {
-        Err(ContractError::Unauthorized {})
-    } else {
-        cfg.admins = map_validate(deps.api, &admins)?;
-        ADMIN_LIST.save(deps.storage, &cfg)?;
-
-        let res = Response::new().add_attribute("action", "update_admins");
-        Ok(res)
+    let cfg = CONFIG.load(deps.storage)?;
+    if !cfg.admin.eq(&info.sender) {
+        return Err(ContractError::Unauthorized {});
     }
+
+    let ica_msg = simple_ica_controller::msg::ExecuteMsg::IbcQuery {
+        channel_id,
+        msgs,
+        callback_id: Some(callback_id),
+    };
+    let msg = WasmMsg::Execute {
+        contract_addr: cfg.simple_ica_controller.into(),
+        msg: to_binary(&ica_msg)?,
+        funds: vec![],
+    };
+
+    let res = Response::new().add_message(msg);
+    Ok(res)
 }
 
-fn can_execute(deps: Deps, sender: &str) -> StdResult<bool> {
-    let cfg = ADMIN_LIST.load(deps.storage)?;
-    let can = cfg.is_admin(&sender);
-    Ok(can)
+pub fn execute_check_remote_balance(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    channel_id: String,
+) -> Result<Response, ContractError> {
+    let cfg = CONFIG.load(deps.storage)?;
+    if !cfg.admin.eq(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let ica_msg = simple_ica_controller::msg::ExecuteMsg::CheckRemoteBalance { channel_id };
+    let msg = WasmMsg::Execute {
+        contract_addr: cfg.simple_ica_controller.into(),
+        msg: to_binary(&ica_msg)?,
+        funds: vec![],
+    };
+
+    let res = Response::new().add_message(msg);
+    Ok(res)
+}
+
+pub fn execute_send_funds(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    ica_channel_id: String,
+    transfer_channel_id: String,
+) -> Result<Response, ContractError> {
+    let cfg = CONFIG.load(deps.storage)?;
+    if !cfg.admin.eq(&info.sender) {
+        return Err(ContractError::Unauthorized {});
+    }
+
+    let ica_msg = simple_ica_controller::msg::ExecuteMsg::SendFunds {
+        ica_channel_id,
+        transfer_channel_id,
+    };
+    let msg = WasmMsg::Execute {
+        contract_addr: cfg.simple_ica_controller.into(),
+        msg: to_binary(&ica_msg)?,
+        funds: info.funds,
+    };
+
+    let res = Response::new().add_message(msg);
+    Ok(res)
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::AdminList {} => to_binary(&query_admin_list(deps)?),
-        QueryMsg::CanExecute { sender, msg } => to_binary(&query_can_execute(deps, sender, msg)?),
+        QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
+        QueryMsg::QueryResult { id } => to_binary(&query_query_result(deps, id)?),
+        QueryMsg::MessageResult { id } => to_binary(&query_message_result(deps, id)?),
     }
 }
 
-pub fn query_admin_list(deps: Deps) -> StdResult<AdminListResponse> {
-    let cfg = ADMIN_LIST.load(deps.storage)?;
-    Ok(AdminListResponse {
-        admins: cfg.admins.into_iter().map(|a| a.into()).collect(),
-        mutable: cfg.mutable,
+pub fn query_admin(deps: Deps) -> StdResult<AdminResponse> {
+    let cfg = CONFIG.load(deps.storage)?;
+    Ok(AdminResponse {
+        admin: cfg.admin.into(),
     })
 }
 
-pub fn query_can_execute(
-    deps: Deps,
-    sender: String,
-    _msg: CosmosMsg,
-) -> StdResult<CanExecuteResponse> {
-    Ok(CanExecuteResponse {
-        can_execute: can_execute(deps, &sender)?,
-    })
+pub fn query_query_result(deps: Deps, id: String) -> StdResult<QueryResultResponse> {
+    let query = QUERY_RESULT.load(deps.storage, &id)?;
+    Ok(QueryResultResponse { query })
+}
+
+pub fn query_message_result(deps: Deps, id: String) -> StdResult<MessageResultResponse> {
+    let msg = MESSAGE_RESULT.load(deps.storage, &id)?;
+    Ok(MessageResultResponse { msg })
 }
 
 #[cfg(test)]

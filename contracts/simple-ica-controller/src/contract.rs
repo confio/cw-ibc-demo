@@ -1,7 +1,10 @@
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
-    QueryResponse, Response, StdError, StdResult, WasmQuery,
+    to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order, QueryResponse, Response,
+    StdError, StdResult, WasmQuery,
 };
+
 use simple_ica::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
@@ -11,7 +14,7 @@ use crate::msg::{
 };
 use crate::state::{Config, IbcQueryResponse, ACCOUNTS, CONFIG, LATEST_QUERIES};
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
@@ -25,7 +28,7 @@ pub fn instantiate(
     Ok(Response::new().add_attribute("action", "instantiate"))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
         ExecuteMsg::UpdateAdmin { admin } => execute_update_admin(deps, info, admin),
@@ -43,7 +46,7 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             callback_id,
         } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::SendFunds {
-            reflect_channel_id,
+            ica_channel_id: reflect_channel_id,
             transfer_channel_id,
         } => execute_send_funds(deps, env, info, reflect_channel_id, transfer_channel_id),
     }
@@ -205,7 +208,7 @@ pub fn execute_send_funds(
     Ok(res)
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     match msg {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),

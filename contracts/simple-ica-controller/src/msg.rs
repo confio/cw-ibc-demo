@@ -36,11 +36,11 @@ pub enum ExecuteMsg {
     /// to the account on the remote side of this channel.
     /// If we don't have the address yet, this fails.
     SendFunds {
-        /// The channel id we use above to talk with the reflect contract
-        reflect_channel_id: String,
+        /// The channel id we use above to send the simple-ica query on
+        ica_channel_id: String,
         /// The channel to use for ibctransfer. This is bound to a different
         /// port and handled by a different module.
-        /// It should connect to the same chain as the reflect_channel_id does
+        /// It should connect to the same chain as the ica_channel_id does
         transfer_channel_id: String,
     },
 }
