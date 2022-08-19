@@ -1,5 +1,5 @@
 import { CosmWasmSigner, Link, testutils } from "@confio/relayer";
-import { toBase64, toUtf8 } from "@cosmjs/encoding";
+import { toBinary } from "@cosmjs/cosmwasm-stargate";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
