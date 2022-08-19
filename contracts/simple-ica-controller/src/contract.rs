@@ -32,16 +32,16 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
         ExecuteMsg::SendMsgs {
             channel_id,
             msgs,
-            callback,
-        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback),
+            callback_id,
+        } => execute_send_msgs(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::CheckRemoteBalance { channel_id } => {
             execute_check_remote_balance(deps, env, info, channel_id)
         }
         ExecuteMsg::IbcQuery {
             channel_id,
             msgs,
-            callback,
-        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback),
+            callback_id,
+        } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::SendFunds {
             reflect_channel_id,
             transfer_channel_id,
@@ -73,7 +73,7 @@ pub fn execute_send_msgs(
     info: MessageInfo,
     channel_id: String,
     msgs: Vec<CosmosMsg>,
-    callback: Option<String>,
+    callback_id: Option<String>,
 ) -> StdResult<Response> {
     // auth check
     let cfg = CONFIG.load(deps.storage)?;
@@ -84,7 +84,12 @@ pub fn execute_send_msgs(
     ACCOUNTS.load(deps.storage, &channel_id)?;
 
     // construct a packet to send
-    let packet = PacketMsg::Dispatch { msgs, callback };
+    let sender = info.sender.into();
+    let packet = PacketMsg::Dispatch {
+        sender,
+        msgs,
+        callback_id,
+    };
     let msg = IbcMsg::SendPacket {
         channel_id,
         data: to_binary(&packet)?,
@@ -100,13 +105,18 @@ pub fn execute_send_msgs(
 pub fn execute_ibc_query(
     _deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     channel_id: String,
     msgs: Vec<WasmQuery>,
-    callback: Option<String>,
+    callback_id: Option<String>,
 ) -> StdResult<Response> {
     // construct a packet to send
-    let packet = PacketMsg::IbcQuery { msgs, callback };
+    let sender = info.sender.into();
+    let packet = PacketMsg::IbcQuery {
+        sender,
+        msgs,
+        callback_id,
+    };
     let msg = IbcMsg::SendPacket {
         channel_id,
         data: to_binary(&packet)?,
@@ -213,8 +223,7 @@ fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
 }
 
 fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<IbcQueryResponse> {
-    let results = LATEST_QUERIES.load(deps.storage, &channel_id)?;
-    Ok(results.into())
+    LATEST_QUERIES.load(deps.storage, &channel_id)
 }
 
 fn query_list_accounts(deps: Deps) -> StdResult<ListAccountsResponse> {

@@ -10,12 +10,14 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum PacketMsg {
     Dispatch {
+        sender: String,
         msgs: Vec<CosmosMsg>,
-        callback: Option<String>,
+        callback_id: Option<String>,
     },
     IbcQuery {
+        sender: String,
         msgs: Vec<WasmQuery>,
-        callback: Option<String>,
+        callback_id: Option<String>,
     },
     WhoAmI {},
     Balances {},
@@ -70,6 +72,8 @@ impl StdAck {
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 #[serde(rename_all = "snake_case")]
 pub struct ReceiveIbcResponseMsg {
+    /// The ID chosen by the caller in the `callback_id`
+    pub id: String,
     pub msg: IbcPacketAckMsg,
 }
 

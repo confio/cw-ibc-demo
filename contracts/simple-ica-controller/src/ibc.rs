@@ -104,10 +104,16 @@ pub fn ibc_packet_ack(
     let res: StdAck = from_slice(&msg.acknowledgement.data)?;
 
     match original_packet {
-        PacketMsg::Dispatch { callback, .. } => {
-            acknowledge_dispatch(deps, env, caller, callback, msg)
-        }
-        PacketMsg::IbcQuery { callback, .. } => acknowledge_query(deps, env, caller, callback, msg),
+        PacketMsg::Dispatch {
+            sender,
+            callback_id,
+            ..
+        } => acknowledge_dispatch(deps, env, caller, sender, callback_id, msg),
+        PacketMsg::IbcQuery {
+            sender,
+            callback_id,
+            ..
+        } => acknowledge_query(deps, env, caller, sender, callback_id, msg),
         PacketMsg::WhoAmI {} => acknowledge_who_am_i(deps, caller, res),
         PacketMsg::Balances {} => acknowledge_balances(deps, env, caller, res),
     }
@@ -119,24 +125,24 @@ fn acknowledge_dispatch(
     _deps: DepsMut,
     _env: Env,
     _caller: String,
-    callback: Option<String>,
+    sender: String,
+    callback_id: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    // TODO: actually handle success/error?
-    match callback {
-        Some(callback) => {
+    let res = IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch");
+    match callback_id {
+        Some(id) => {
             // Send IBC packet ack message to another contract
-            let msg = WasmMsg::Execute {
-                contract_addr: callback.clone(),
-                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
-                funds: vec![],
-            };
-            Ok(IbcBasicResponse::new()
-                .add_attribute("action", "acknowledge_dispatch")
-                .add_attribute("callback_address", callback)
-                .add_message(msg))
+            let res = res
+                .add_attribute("callback_id", &id)
+                .add_message(WasmMsg::Execute {
+                    contract_addr: sender,
+                    msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
+                    funds: vec![],
+                });
+            Ok(res)
         }
-        None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch")),
+        None => Ok(res),
     }
 }
 
@@ -144,7 +150,8 @@ fn acknowledge_query(
     deps: DepsMut,
     env: Env,
     caller: String,
-    callback: Option<String>,
+    sender: String,
+    callback_id: Option<String>,
     msg: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     // store IBC response for later querying from the smart contract??
@@ -156,17 +163,16 @@ fn acknowledge_query(
             response: msg.clone(),
         },
     )?;
-    match callback {
-        Some(callback) => {
+    match callback_id {
+        Some(id) => {
             // Send IBC packet ack message to another contract
             let msg = WasmMsg::Execute {
-                contract_addr: callback.clone(),
-                msg: to_binary(&ReceiveIbcResponseMsg { msg })?,
+                contract_addr: sender,
+                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
                 funds: vec![],
             };
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_ibc_query")
-                .add_attribute("callback_address", callback)
                 .add_message(msg))
         }
         None => Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_ibc_query")),
@@ -378,7 +384,7 @@ mod tests {
         let handle_msg = ExecuteMsg::SendMsgs {
             channel_id: channel_id.into(),
             msgs: msgs_to_dispatch,
-            callback: None,
+            callback_id: None,
         };
         let info = mock_info(CREATOR, &[]);
         let mut res = execute(deps.as_mut(), mock_env(), info, handle_msg).unwrap();
