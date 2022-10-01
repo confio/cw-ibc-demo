@@ -1,5 +1,5 @@
 import { CosmWasmSigner, Link, testutils } from "@confio/relayer";
-import { toBinary } from "@cosmjs/cosmwasm-stargate";
+// import { toBinary } from "@cosmjs/cosmwasm-stargate";
 import { assert } from "@cosmjs/utils";
 import test from "ava";
 import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
@@ -7,9 +7,12 @@ import { Order } from "cosmjs-types/ibc/core/channel/v1/channel";
 const { osmosis: oldOsmo, setup, wasmd, randomAddress } = testutils;
 const osmosis = { ...oldOsmo, minFee: "0.025uosmo" };
 
+import { CallbackCapturerClient } from "./bindings/CallbackCapturer.client";
+import { Binary, StdAck } from "./bindings/CallbackCapturer.types";
 import {
   checkRemoteBalance,
   fundRemoteAccount,
+  ibcQuery,
   listAccounts,
   remoteBankMultiSend,
   remoteBankSend,
@@ -19,6 +22,7 @@ import {
   assertPacketsFromA,
   IbcVersion,
   parseAcknowledgementSuccess,
+  parseBinary,
   setupContracts,
   setupOsmosisClient,
   setupWasmClient,
@@ -30,6 +34,7 @@ let osmosisIds: Record<string, number> = {};
 test.before(async (t) => {
   console.debug("Upload contracts to wasmd...");
   const wasmContracts = {
+    callback: "./internal/callback_capturer.wasm",
     controller: "./internal/simple_ica_controller.wasm",
   };
   const wasmSign = await setupWasmClient();
@@ -318,7 +323,7 @@ test.serial("properly rollback first submessage if second fails", async (t) => {
 });
 
 test.serial("query remote chain", async (t) => {
-  const { wasmClient, wasmController, link, osmoClient, osmoHost } = await demoSetup();
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
 
   // there is an initial packet to relay for the whoami run
   let info = await link.relayAll();
@@ -335,38 +340,131 @@ test.serial("query remote chain", async (t) => {
   const initFunds = { amount: "2500600", denom: osmosis.denomFee };
   await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
 
-  // make a new empty account on osmosis
-  const emptyAddr = randomAddress(osmosis.prefix);
-  const noFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
-  t.is(noFunds.amount, "0");
-
-  // from wasmd, send a packet to transfer funds from remoteAddr to emptyAddr
-  const sendFunds = { amount: "1200300", denom: osmosis.denomFee };
-  await remoteBankSend(wasmClient, wasmController, channelId, emptyAddr, [sendFunds]);
+  // Use IBC queries to query account info from the remote contract
+  const bankQuery = [{ bank: { all_balances: { address: remoteAddr } } }];
+  await ibcQuery(wasmClient, wasmController, channelId, bankQuery);
 
   // relay this over
   info = await link.relayAll();
   assertPacketsFromA(info, 1, true);
-  // TODO: add helper for this
-  const contractData = parseAcknowledgementSuccess(info.acksFromB[0]);
-  // check we get { results : ['']} (one message with no data)
-  t.deepEqual(contractData, { results: [""] });
 
-  // ensure that the money was transfered
-  const gotFunds = await osmoClient.sign.getBalance(emptyAddr, osmosis.denomFee);
-  t.deepEqual(gotFunds, sendFunds);
+  // now query the latest query info stored
+  const bankStored = await wasmClient.sign.queryContractSmart(wasmController, {
+    latest_query_result: { channel_id: channelId },
+  });
+  const firstTime = bankStored.last_update_time;
+  t.truthy(firstTime);
+  assert(bankStored.response.result);
+  const storedSuccess = parseBinary(bankStored.response.result);
+  t.log(storedSuccess);
+  assert(storedSuccess.results);
+  t.is(storedSuccess.results.length, 1);
+  const storedBank = parseBinary(storedSuccess.results[0]);
+  t.log(storedBank);
+  t.deepEqual(storedBank, { amount: [initFunds] });
 
-  // Use IBC queries to query account info from the remote contract
-  const ibcQuery = await wasmClient.sign.execute(
+  // Demo a failing query
+  const badQuery = [{ wasm: { smart: { contract_addr: "no such contract", msg: "e30=" } } }];
+  await ibcQuery(wasmClient, wasmController, channelId, badQuery);
+  // this should return an error acknowledgement
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
+
+  // now query this is stored properly
+  const badStored = await wasmClient.sign.queryContractSmart(wasmController, {
+    latest_query_result: { channel_id: channelId },
+  });
+  const secondTime = badStored.last_update_time;
+  t.truthy(secondTime);
+  t.notDeepEqual(firstTime, secondTime);
+  t.log(badStored.response);
+  assert(badStored.response.error);
+});
+
+test.serial("query with callback", async (t) => {
+  const { wasmClient, wasmController, link, osmoClient } = await demoSetup();
+
+  // there is an initial packet to relay for the whoami run
+  let info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // switch over to use the callback contract
+  const { contractAddress: callbackAddr } = await wasmClient.sign.instantiate(
     wasmClient.senderAddress,
-    wasmController,
-    {
-      ibc_query: {
-        channel_id: channelId,
-        msgs: [{ smart: { msg: toBinary({ list_accounts: {} }), contract_addr: osmoHost } }],
-      },
-    },
+    wasmIds.callback,
+    { simple_ica_controller: wasmController },
+    "Callback #1",
     "auto"
   );
-  console.log(ibcQuery);
+  const callback = new CallbackCapturerClient(wasmClient.sign, wasmClient.senderAddress, callbackAddr);
+
+  // and update the admin, so the callback contract can use the controller
+  await wasmClient.sign.execute(
+    wasmClient.senderAddress,
+    wasmController,
+    { update_admin: { admin: callbackAddr } },
+    "auto"
+  );
+
+  // get the account info
+  const accounts = await listAccounts(wasmClient, wasmController);
+  t.is(accounts.length, 1);
+  const { remote_addr: remoteAddr, channel_id: channelId } = accounts[0];
+  assert(remoteAddr);
+  assert(channelId);
+
+  // send some osmo to the remote address (using another funded account there)
+  const initFunds = { amount: "2500600", denom: osmosis.denomFee };
+  await osmoClient.sign.sendTokens(osmoClient.senderAddress, remoteAddr, [initFunds], "auto");
+
+  // No result here at first
+  try {
+    await callback.result({ id: "demo1" });
+    t.fail("should have thrown");
+  } catch (e) {
+    t.truthy(e);
+  }
+
+  // Use IBC queries to query account info from the remote contract
+  const bankQuery = [{ bank: { all_balances: { address: remoteAddr } } }];
+  await callback.ibcQuery({ callbackId: "demo1", channelId, msgs: bankQuery });
+
+  // relay this over
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, true);
+
+  // now ensure the callback is stored in the callback contract
+  const cb = await callback.result({ id: "demo1" });
+  t.log(cb.result);
+  if (!isSuccess(cb.result)) {
+    t.fail(`got error ${cb.result.error}`);
+  } else {
+    const storedSuccess = parseBinary(cb.result.result);
+    t.log(storedSuccess);
+    assert(storedSuccess.results);
+    t.is(storedSuccess.results.length, 1);
+    const storedBank = parseBinary(storedSuccess.results[0]);
+    t.log(storedBank);
+    t.deepEqual(storedBank, { amount: [initFunds] });
+  }
+
+  // Callback works for error case
+  const badQuery = [{ wasm: { smart: { contract_addr: "no such contract", msg: "e30=" } } }];
+  await callback.ibcQuery({ callbackId: "failure", channelId, msgs: badQuery });
+  // this should return an error acknowledgement
+  info = await link.relayAll();
+  assertPacketsFromA(info, 1, false);
+
+  // now ensure error callback is also stored in properly
+  const cb2 = await callback.result({ id: "failure" });
+  if (isSuccess(cb2.result)) {
+    t.fail(`expected error`);
+  } else {
+    t.log(cb2.result.error);
+    t.truthy(cb2.result.error);
+  }
 });
+
+function isSuccess(ack: StdAck): ack is { result: Binary } {
+  return (ack as { result: Binary }).result !== undefined;
+}

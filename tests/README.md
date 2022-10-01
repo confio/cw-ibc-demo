@@ -74,3 +74,36 @@ You may run and re-run tests many times. When you are done with it and want to f
 ./scripts/wasmd/stop.sh
 ./scripts/osmosisd/stop.sh
 ```
+
+## Codegen
+
+We use [ts-codegen](https://github.com/CosmWasm/ts-codegen) to generate bindings to some contracts.
+Read for more info of follow this quick start:
+
+Install ts-codegen
+
+```bash
+npm install -g @cosmwasm/ts-codegen
+```
+
+Generate schema for the contract
+
+```bash
+cd ls ../contracts/callback-capturer
+cargo schema
+cd -
+```
+
+Generate bindings
+
+```bash
+mkdir -p src/bindings
+
+cosmwasm-ts-codegen generate \
+          --plugin client \
+          --schema ls ../contracts/callback-capturer/schema \
+          --out ./src/bindings \
+          --name CallbackCapturer
+```
+
+(You can safely say "no" for "enable bundle")

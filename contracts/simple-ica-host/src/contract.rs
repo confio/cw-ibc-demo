@@ -1,9 +1,10 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, wasm_execute, BankMsg, CosmosMsg, Deps, DepsMut, Empty,
-    Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse, IbcChannelCloseMsg,
-    IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo, Order, QueryRequest,
-    QueryResponse, Reply, Response, StdResult, SubMsg, WasmMsg, WasmQuery,
+    entry_point, from_slice, to_binary, to_vec, wasm_execute, BankMsg, Binary, ContractResult,
+    CosmosMsg, Deps, DepsMut, Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse,
+    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse,
+    IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo,
+    Order, QuerierWrapper, QueryRequest, QueryResponse, Reply, Response, StdError, StdResult,
+    SubMsg, SystemResult, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
@@ -219,13 +220,31 @@ pub fn ibc_packet_receive(
     }
 }
 
-// TODO use query request for msgs here (empty custom)
+fn unparsed_query(
+    querier: QuerierWrapper<'_, Empty>,
+    request: &QueryRequest<Empty>,
+) -> Result<Binary, ContractError> {
+    let raw = to_vec(request)?;
+    match querier.raw_query(&raw) {
+        SystemResult::Err(system_err) => {
+            Err(StdError::generic_err(format!("Querier system error: {}", system_err)).into())
+        }
+        SystemResult::Ok(ContractResult::Err(contract_err)) => {
+            Err(StdError::generic_err(format!("Querier contract error: {}", contract_err)).into())
+        }
+        SystemResult::Ok(ContractResult::Ok(value)) => Ok(value),
+    }
+}
+
 // processes IBC query
-fn receive_query(deps: Deps, msgs: Vec<WasmQuery>) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_query(
+    deps: Deps,
+    msgs: Vec<QueryRequest<Empty>>,
+) -> Result<IbcReceiveResponse, ContractError> {
     let mut results = vec![];
 
     for query in msgs {
-        let res = deps.querier.query(&QueryRequest::Wasm(query))?;
+        let res = unparsed_query(deps.querier, &query)?;
         results.push(res);
     }
     let response = IbcQueryResponse { results };

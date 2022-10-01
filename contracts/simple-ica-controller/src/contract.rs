@@ -1,31 +1,33 @@
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    entry_point, to_binary, CosmosMsg, Deps, DepsMut, Env, IbcMsg, MessageInfo, Order,
-    QueryResponse, Response, StdError, StdResult, WasmQuery,
+    to_binary, CosmosMsg, Deps, DepsMut, Empty, Env, IbcMsg, MessageInfo, Order, QueryRequest,
+    QueryResponse, Response, StdError, StdResult,
 };
+
 use simple_ica::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
 use crate::msg::{
-    AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse,
-    QueryMsg,
+    AccountInfo, AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, LatestQueryResponse,
+    ListAccountsResponse, QueryMsg,
 };
-use crate::state::{Config, IbcQueryResponse, ACCOUNTS, CONFIG, LATEST_QUERIES};
+use crate::state::{Config, ACCOUNTS, CONFIG, LATEST_QUERIES};
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    // we store the reflect_id for creating accounts later
     let cfg = Config { admin: info.sender };
     CONFIG.save(deps.storage, &cfg)?;
 
     Ok(Response::new().add_attribute("action", "instantiate"))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> StdResult<Response> {
     match msg {
         ExecuteMsg::UpdateAdmin { admin } => execute_update_admin(deps, info, admin),
@@ -43,9 +45,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             callback_id,
         } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::SendFunds {
-            reflect_channel_id,
+            ica_channel_id,
             transfer_channel_id,
-        } => execute_send_funds(deps, env, info, reflect_channel_id, transfer_channel_id),
+        } => execute_send_funds(deps, env, info, ica_channel_id, transfer_channel_id),
     }
 }
 
@@ -107,7 +109,7 @@ pub fn execute_ibc_query(
     env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<WasmQuery>,
+    msgs: Vec<QueryRequest<Empty>>,
     callback_id: Option<String>,
 ) -> StdResult<Response> {
     // construct a packet to send
@@ -161,7 +163,7 @@ pub fn execute_send_funds(
     deps: DepsMut,
     env: Env,
     mut info: MessageInfo,
-    reflect_channel_id: String,
+    ica_channel_id: String,
     transfer_channel_id: String,
 ) -> StdResult<Response> {
     // intentionally no auth check
@@ -181,7 +183,7 @@ pub fn execute_send_funds(
     }
 
     // load remote account
-    let data = ACCOUNTS.load(deps.storage, &reflect_channel_id)?;
+    let data = ACCOUNTS.load(deps.storage, &ica_channel_id)?;
     let remote_addr = match data.remote_addr {
         Some(addr) => addr,
         None => {
@@ -205,7 +207,7 @@ pub fn execute_send_funds(
     Ok(res)
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     match msg {
         QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
@@ -222,7 +224,7 @@ fn query_account(deps: Deps, channel_id: String) -> StdResult<AccountResponse> {
     Ok(account.into())
 }
 
-fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<IbcQueryResponse> {
+fn query_latest_ibc_query_result(deps: Deps, channel_id: String) -> StdResult<LatestQueryResponse> {
     LATEST_QUERIES.load(deps.storage, &channel_id)
 }
 

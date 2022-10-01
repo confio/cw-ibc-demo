@@ -189,6 +189,7 @@ jobs:
           paths:
             - simple_ica_controller.wasm
             - simple_ica_host.wasm
+            - callback_capturer.wasm
 
   ts-build:
     docker:

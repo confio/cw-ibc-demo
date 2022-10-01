@@ -1,22 +1,25 @@
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
+    from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
-    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult, WasmMsg,
+    IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
 use simple_ica::{
-    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIbcResponseMsg, StdAck,
+    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIcaResponseMsg, StdAck,
     WhoAmIResponse,
 };
 
 use crate::error::ContractError;
-use crate::state::{AccountData, IbcQueryResponse, ACCOUNTS, LATEST_QUERIES};
+use crate::msg::LatestQueryResponse;
+use crate::state::{AccountData, ACCOUNTS, LATEST_QUERIES};
 
 // TODO: make configurable?
 /// packets live one hour
 pub const PACKET_LIFETIME: u64 = 60 * 60;
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 /// enforces ordering and versioing constraints
 pub fn ibc_channel_open(
     _deps: DepsMut,
@@ -33,7 +36,7 @@ pub fn ibc_channel_open(
     Ok(None)
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 /// once it's established, we send a WhoAmI message
 pub fn ibc_channel_connect(
     deps: DepsMut,
@@ -61,7 +64,7 @@ pub fn ibc_channel_connect(
         .add_attribute("channel_id", channel_id))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 /// On closed channel, simply delete the account from our local store
 pub fn ibc_channel_close(
     deps: DepsMut,
@@ -79,7 +82,7 @@ pub fn ibc_channel_close(
         .add_attribute("channel_id", channel_id))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 /// never should be called as the other side never sends packets
 pub fn ibc_packet_receive(
     _deps: DepsMut,
@@ -91,7 +94,7 @@ pub fn ibc_packet_receive(
         .add_attribute("action", "ibc_packet_ack"))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 pub fn ibc_packet_ack(
     deps: DepsMut,
     env: Env,
@@ -127,19 +130,17 @@ fn acknowledge_dispatch(
     _caller: String,
     sender: String,
     callback_id: Option<String>,
-    msg: IbcPacketAckMsg,
+    ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
     let res = IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch");
     match callback_id {
         Some(id) => {
+            let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
             // Send IBC packet ack message to another contract
             let res = res
                 .add_attribute("callback_id", &id)
-                .add_message(WasmMsg::Execute {
-                    contract_addr: sender,
-                    msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
-                    funds: vec![],
-                });
+                //  In production, you will want to think about gas limits for this callback.
+                .add_message(ReceiveIcaResponseMsg { id, msg }.into_cosmos_msg(sender)?);
             Ok(res)
         }
         None => Ok(res),
@@ -152,13 +153,15 @@ fn acknowledge_query(
     caller: String,
     sender: String,
     callback_id: Option<String>,
-    msg: IbcPacketAckMsg,
+    ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
+    let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
+
     // store IBC response for later querying from the smart contract??
     LATEST_QUERIES.save(
         deps.storage,
         &caller,
-        &IbcQueryResponse {
+        &LatestQueryResponse {
             last_update_time: env.block.time,
             response: msg.clone(),
         },
@@ -166,11 +169,7 @@ fn acknowledge_query(
     match callback_id {
         Some(id) => {
             // Send IBC packet ack message to another contract
-            let msg = WasmMsg::Execute {
-                contract_addr: sender,
-                msg: to_binary(&ReceiveIbcResponseMsg { id, msg })?,
-                funds: vec![],
-            };
+            let msg = ReceiveIcaResponseMsg { id, msg }.into_cosmos_msg(sender)?;
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_ibc_query")
                 .add_message(msg))
@@ -248,7 +247,7 @@ fn acknowledge_balances(
     Ok(IbcBasicResponse::new().add_attribute("action", "acknowledge_balances"))
 }
 
-#[entry_point]
+#[cfg_attr(not(feature = "library"), entry_point)]
 /// we just ignore these now. shall we store some info?
 pub fn ibc_packet_timeout(
     _deps: DepsMut,
@@ -421,7 +420,7 @@ mod tests {
 
         // let's try to send funds to a channel that doesn't exist
         let msg = ExecuteMsg::SendFunds {
-            reflect_channel_id: "random-channel".into(),
+            ica_channel_id: "random-channel".into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
         let info = mock_info(CREATOR, &coins(12344, "utrgd"));
@@ -429,7 +428,7 @@ mod tests {
 
         // let's try with no sent funds in the message
         let msg = ExecuteMsg::SendFunds {
-            reflect_channel_id: reflect_channel_id.into(),
+            ica_channel_id: reflect_channel_id.into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
         let info = mock_info(CREATOR, &[]);
@@ -437,7 +436,7 @@ mod tests {
 
         // 3rd times the charm
         let msg = ExecuteMsg::SendFunds {
-            reflect_channel_id: reflect_channel_id.into(),
+            ica_channel_id: reflect_channel_id.into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
         let info = mock_info(CREATOR, &coins(12344, "utrgd"));

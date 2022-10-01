@@ -15,6 +15,10 @@ export interface AccountResponse {
   remote_balance: Coin[];
 }
 
+export interface QueryAck {
+  result: string[];
+}
+
 export async function listAccounts(cosmwasm: CosmWasmSigner, controllerAddr: string): Promise<AccountInfo[]> {
   const query = { list_accounts: {} };
   const res = await cosmwasm.sign.queryContractSmart(controllerAddr, query);
@@ -38,7 +42,7 @@ export async function fundRemoteAccount(
   ics20Channel: string,
   funds: Coin
 ): Promise<ExecuteResult> {
-  const msg = { send_funds: { reflect_channel_id: channelId, transfer_channel_id: ics20Channel } };
+  const msg = { send_funds: { ica_channel_id: channelId, transfer_channel_id: ics20Channel } };
   const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto", undefined, [funds]);
   return res;
 }
@@ -97,6 +101,22 @@ export async function remoteCall(
     send_msgs: {
       channel_id: channelId,
       msgs,
+    },
+  };
+  const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto");
+  return res;
+}
+
+export async function ibcQuery(
+  cosmwasm: CosmWasmSigner,
+  controllerAddr: string,
+  channelId: string,
+  queries: unknown[]
+): Promise<ExecuteResult> {
+  const msg = {
+    ibc_query: {
+      channel_id: channelId,
+      msgs: queries,
     },
   };
   const res = await cosmwasm.sign.execute(cosmwasm.senderAddress, controllerAddr, msg, "auto");

@@ -1,6 +1,7 @@
-use cosmwasm_std::{Coin, CosmosMsg, Empty, Timestamp, WasmQuery};
+use cosmwasm_std::{Coin, CosmosMsg, Empty, QueryRequest, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use simple_ica::StdAck;
 
 use crate::state::AccountData;
 
@@ -28,7 +29,7 @@ pub enum ExecuteMsg {
     },
     IbcQuery {
         channel_id: String,
-        msgs: Vec<WasmQuery>,
+        msgs: Vec<QueryRequest<Empty>>,
         /// If set, the original caller will get a callback with of the result, along with this id
         callback_id: Option<String>,
     },
@@ -36,11 +37,11 @@ pub enum ExecuteMsg {
     /// to the account on the remote side of this channel.
     /// If we don't have the address yet, this fails.
     SendFunds {
-        /// The channel id we use above to talk with the reflect contract
-        reflect_channel_id: String,
+        /// The channel id we use above to send the simple-ica query on
+        ica_channel_id: String,
         /// The channel to use for ibctransfer. This is bound to a different
         /// port and handled by a different module.
-        /// It should connect to the same chain as the reflect_channel_id does
+        /// It should connect to the same chain as the ica_channel_id does
         transfer_channel_id: String,
     },
 }
@@ -66,6 +67,13 @@ pub struct AdminResponse {
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct ListAccountsResponse {
     pub accounts: Vec<AccountInfo>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct LatestQueryResponse {
+    /// last block balance was updated (0 is never)
+    pub last_update_time: Timestamp,
+    pub response: StdAck,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

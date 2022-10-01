@@ -53,7 +53,6 @@ export function assertAckSuccess(acks: AckWithMetadata[]) {
     if (parsed.error) {
       throw new Error(`Unexpected error in ack: ${parsed.error}`);
     }
-    console.log(parsed);
     if (!parsed.result) {
       throw new Error(`Ack result unexpectedly empty`);
     }
@@ -101,8 +100,20 @@ export function assertPacketsFromB(relay: RelayInfo, count: number, success: boo
   }
 }
 
-export function parseAcknowledgementSuccess(ack: AckWithMetadata): unknown {
-  const response = JSON.parse(fromUtf8(ack.acknowledgement));
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+export function parseAcknowledgementSuccess(ack: AckWithMetadata): any {
+  const response = parseString(ack.acknowledgement);
   assert(response.result);
-  return JSON.parse(fromUtf8(fromBase64(response.result)));
+  return parseBinary(response.result);
 }
+
+export function parseString(str: Uint8Array): any {
+  return JSON.parse(fromUtf8(str));
+}
+
+export function parseBinary(bin: string): any {
+  return JSON.parse(fromUtf8(fromBase64(bin)));
+}
+
+/* eslint-enable @typescript-eslint/no-explicit-any */
