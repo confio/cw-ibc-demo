@@ -57,7 +57,7 @@ pub fn execute(
             ica_channel_id,
             transfer_channel_id,
         } => execute_send_funds(deps, env, info, ica_channel_id, transfer_channel_id),
-        ExecuteMsg::ReceiveIbcResponse(resp) => execute_receive_ibc_response(deps, env, info, resp),
+        ExecuteMsg::ReceiveIcaResponse(resp) => execute_receive_ibc_response(deps, env, info, resp),
     }
 }
 
@@ -314,7 +314,7 @@ mod tests {
             .unwrap(),
         );
         let info = mock_info(ica, &[]);
-        let msg = ExecuteMsg::ReceiveIbcResponse(ReceiveIcaResponseMsg {
+        let msg = ExecuteMsg::ReceiveIcaResponse(ReceiveIcaResponseMsg {
             id: callback.to_string(),
             msg: ack.clone(),
         });

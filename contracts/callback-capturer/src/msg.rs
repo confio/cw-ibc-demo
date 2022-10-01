@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
         /// It should connect to the same chain as the ica_channel_id does
         transfer_channel_id: String,
     },
-    ReceiveIbcResponse(ReceiveIcaResponseMsg),
+    ReceiveIcaResponse(ReceiveIcaResponseMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
