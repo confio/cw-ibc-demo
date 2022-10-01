@@ -5,7 +5,7 @@ use cosmwasm_std::{
     QueryResponse, Response, StdError, StdResult,
 };
 
-use simple_ica::PacketMsg;
+use simple_ica::client_ibc_msg::PacketMsg;
 
 use crate::ibc::PACKET_LIFETIME;
 use crate::msg::{
@@ -13,6 +13,7 @@ use crate::msg::{
     ListAccountsResponse, QueryMsg,
 };
 use crate::state::{Config, ACCOUNTS, CONFIG, LATEST_QUERIES};
+use osmo_bindings::{OsmosisMsg, OsmosisQuery};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -74,7 +75,7 @@ pub fn execute_send_msgs(
     env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<CosmosMsg>,
+    msgs: Vec<CosmosMsg<OsmosisMsg>>,
     callback_id: Option<String>,
 ) -> StdResult<Response> {
     // auth check
@@ -109,7 +110,7 @@ pub fn execute_ibc_query(
     env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<QueryRequest<Empty>>,
+    msgs: Vec<QueryRequest<OsmosisQuery>>,
     callback_id: Option<String>,
 ) -> StdResult<Response> {
     // construct a packet to send

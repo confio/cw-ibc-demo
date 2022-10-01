@@ -25,6 +25,7 @@ cosmwasm-std = { version = "1.0.0", features = ["staking", "stargate"] }
 schemars = "0.8.1"
 serde = { version = "1.0.103", default-features = false, features = ["derive"] }
 thiserror = { version = "1.0.23" }
+client-osmo-bindings = { package = "osmo-bindings", git = "https://github.com/OracleDAODAO/osmo-bindings-client"}
 
 [dev-dependencies]
 assert_matches = "1"

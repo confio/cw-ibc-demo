@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use simple_ica::StdAck;
 
 use crate::state::AccountData;
-
+use osmo_bindings::{OsmosisMsg, OsmosisQuery};
 /// This needs no info. Owner of the contract is whoever signed the InstantiateMsg.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -20,7 +20,7 @@ pub enum ExecuteMsg {
     SendMsgs {
         channel_id: String,
         /// Note: we don't handle custom messages on remote chains
-        msgs: Vec<CosmosMsg<Empty>>,
+        msgs: Vec<CosmosMsg<OsmosisMsg>>,
         /// If set, the original caller will get a callback with of the result, along with this id
         callback_id: Option<String>,
     },
@@ -29,7 +29,7 @@ pub enum ExecuteMsg {
     },
     IbcQuery {
         channel_id: String,
-        msgs: Vec<QueryRequest<Empty>>,
+        msgs: Vec<QueryRequest<OsmosisQuery>>,
         /// If set, the original caller will get a callback with of the result, along with this id
         callback_id: Option<String>,
     },

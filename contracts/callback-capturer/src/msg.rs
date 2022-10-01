@@ -1,7 +1,8 @@
+use client_osmo_bindings::{OsmosisMsg, OsmosisQuery};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use cosmwasm_std::{CosmosMsg, Empty, QueryRequest};
+use cosmwasm_std::{CosmosMsg, QueryRequest};
 use simple_ica::{ReceiveIcaResponseMsg, StdAck};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -15,7 +16,7 @@ pub enum ExecuteMsg {
     SendMsgs {
         channel_id: String,
         /// Note: we don't handle custom messages on remote chains
-        msgs: Vec<CosmosMsg<Empty>>,
+        msgs: Vec<CosmosMsg<OsmosisMsg>>,
         /// We store the the result under this id
         callback_id: String,
     },
@@ -24,7 +25,7 @@ pub enum ExecuteMsg {
     },
     IbcQuery {
         channel_id: String,
-        msgs: Vec<QueryRequest<Empty>>,
+        msgs: Vec<QueryRequest<OsmosisQuery>>,
         /// We store the the result under this id
         callback_id: String,
     },

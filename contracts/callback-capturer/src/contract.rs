@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest, Response,
+    to_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, QueryRequest, Response,
     StdResult, WasmMsg,
 };
 
@@ -11,6 +11,7 @@ use simple_ica::ReceiveIcaResponseMsg;
 use crate::error::ContractError;
 use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, ResultResponse};
 use crate::state::{Config, CONFIG, RESULTS};
+use client_osmo_bindings::{OsmosisMsg, OsmosisQuery};
 
 // version info for migration info
 const CONTRACT_NAME: &str = "crates.io:callback-capturer";
@@ -66,7 +67,7 @@ pub fn execute_send_msgs(
     _env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<CosmosMsg<Empty>>,
+    msgs: Vec<CosmosMsg<OsmosisMsg>>,
     callback_id: String,
 ) -> Result<Response, ContractError> {
     let cfg = CONFIG.load(deps.storage)?;
@@ -94,7 +95,7 @@ pub fn execute_ibc_query(
     _env: Env,
     info: MessageInfo,
     channel_id: String,
-    msgs: Vec<QueryRequest<Empty>>,
+    msgs: Vec<QueryRequest<OsmosisQuery>>,
     callback_id: String,
 ) -> Result<Response, ContractError> {
     let cfg = CONFIG.load(deps.storage)?;

@@ -6,9 +6,11 @@ use cosmwasm_std::{
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
 
+use simple_ica::client_ibc_msg::{
+    PacketMsg,
+};
 use simple_ica::{
-    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIcaResponseMsg, StdAck,
-    WhoAmIResponse,
+    check_order, check_version, ReceiveIcaResponseMsg, StdAck, WhoAmIResponse, BalancesResponse
 };
 
 use crate::error::ContractError;

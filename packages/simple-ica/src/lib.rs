@@ -1,6 +1,7 @@
 mod callback;
 mod checks;
 mod ibc_msg;
+pub mod client_ibc_msg;
 
 use cosmwasm_std::IbcOrder;
 
