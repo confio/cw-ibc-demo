@@ -4,9 +4,10 @@
 * and run the @cosmwasm/ts-codegen generate command to regenerate this file.
 */
 
-import { CosmWasmClient, SigningCosmWasmClient, ExecuteResult } from "@cosmjs/cosmwasm-stargate";
 import { StdFee } from "@cosmjs/amino";
-import { AdminResponse, ExecuteMsg, CosmosMsgForEmpty, BankMsg, Uint128, StakingMsg, DistributionMsg, Binary, IbcMsg, Timestamp, Uint64, WasmMsg, GovMsg, VoteOption, QueryRequestForEmpty, BankQuery, StakingQuery, IbcQuery, WasmQuery, StdAck, Coin, Empty, IbcTimeout, IbcTimeoutBlock, ReceiveIcaResponseMsg, InstantiateMsg, QueryMsg, ResultResponse } from "./CallbackCapturer.types";
+import { CosmWasmClient, ExecuteResult, SigningCosmWasmClient } from "@cosmjs/cosmwasm-stargate";
+
+import { AdminResponse, BankMsg, BankQuery, Binary, Coin, CosmosMsgForEmpty, DistributionMsg, Empty, ExecuteMsg, GovMsg, IbcMsg, IbcQuery, IbcTimeout, IbcTimeoutBlock, InstantiateMsg, QueryMsg, QueryRequestForEmpty, ReceiveIcaResponseMsg, ResultResponse, StakingMsg, StakingQuery, StdAck, Timestamp, Uint128, Uint64, VoteOption, WasmMsg, WasmQuery } from "./CallbackCapturer.types";
 export interface CallbackCapturerReadOnlyInterface {
   contractAddress: string;
   admin: () => Promise<AdminResponse>;
