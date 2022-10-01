@@ -139,6 +139,7 @@ fn acknowledge_dispatch(
             // Send IBC packet ack message to another contract
             let res = res
                 .add_attribute("callback_id", &id)
+                //  In production, you will want to think about gas limits for this callback.
                 .add_message(ReceiveIbcResponseMsg { id, msg }.into_cosmos_msg(sender)?);
             Ok(res)
         }

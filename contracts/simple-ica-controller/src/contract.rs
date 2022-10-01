@@ -21,7 +21,6 @@ pub fn instantiate(
     info: MessageInfo,
     _msg: InstantiateMsg,
 ) -> StdResult<Response> {
-    // we store the reflect_id for creating accounts later
     let cfg = Config { admin: info.sender };
     CONFIG.save(deps.storage, &cfg)?;
 
@@ -46,9 +45,9 @@ pub fn execute(deps: DepsMut, env: Env, info: MessageInfo, msg: ExecuteMsg) -> S
             callback_id,
         } => execute_ibc_query(deps, env, info, channel_id, msgs, callback_id),
         ExecuteMsg::SendFunds {
-            ica_channel_id: reflect_channel_id,
+            ica_channel_id,
             transfer_channel_id,
-        } => execute_send_funds(deps, env, info, reflect_channel_id, transfer_channel_id),
+        } => execute_send_funds(deps, env, info, ica_channel_id, transfer_channel_id),
     }
 }
 
@@ -164,7 +163,7 @@ pub fn execute_send_funds(
     deps: DepsMut,
     env: Env,
     mut info: MessageInfo,
-    reflect_channel_id: String,
+    ica_channel_id: String,
     transfer_channel_id: String,
 ) -> StdResult<Response> {
     // intentionally no auth check
@@ -184,7 +183,7 @@ pub fn execute_send_funds(
     }
 
     // load remote account
-    let data = ACCOUNTS.load(deps.storage, &reflect_channel_id)?;
+    let data = ACCOUNTS.load(deps.storage, &ica_channel_id)?;
     let remote_addr = match data.remote_addr {
         Some(addr) => addr,
         None => {
