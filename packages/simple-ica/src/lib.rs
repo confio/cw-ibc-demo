@@ -4,7 +4,7 @@ mod ibc_msg;
 
 use cosmwasm_std::IbcOrder;
 
-pub use crate::callback::ReceiveIbcResponseMsg;
+pub use crate::callback::ReceiveIcaResponseMsg;
 pub use crate::checks::{check_order, check_version, SimpleIcaError};
 pub use crate::ibc_msg::{
     BalancesResponse, DispatchResponse, IbcQueryResponse, PacketMsg, StdAck, WhoAmIResponse,

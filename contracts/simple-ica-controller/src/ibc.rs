@@ -7,7 +7,7 @@ use cosmwasm_std::{
 };
 
 use simple_ica::{
-    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIbcResponseMsg, StdAck,
+    check_order, check_version, BalancesResponse, PacketMsg, ReceiveIcaResponseMsg, StdAck,
     WhoAmIResponse,
 };
 
@@ -140,7 +140,7 @@ fn acknowledge_dispatch(
             let res = res
                 .add_attribute("callback_id", &id)
                 //  In production, you will want to think about gas limits for this callback.
-                .add_message(ReceiveIbcResponseMsg { id, msg }.into_cosmos_msg(sender)?);
+                .add_message(ReceiveIcaResponseMsg { id, msg }.into_cosmos_msg(sender)?);
             Ok(res)
         }
         None => Ok(res),
@@ -169,7 +169,7 @@ fn acknowledge_query(
     match callback_id {
         Some(id) => {
             // Send IBC packet ack message to another contract
-            let msg = ReceiveIbcResponseMsg { id, msg }.into_cosmos_msg(sender)?;
+            let msg = ReceiveIcaResponseMsg { id, msg }.into_cosmos_msg(sender)?;
             Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_ibc_query")
                 .add_message(msg))

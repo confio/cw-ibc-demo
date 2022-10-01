@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{CosmosMsg, Empty, QueryRequest};
-use simple_ica::{ReceiveIbcResponseMsg, StdAck};
+use simple_ica::{ReceiveIcaResponseMsg, StdAck};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
@@ -39,7 +39,7 @@ pub enum ExecuteMsg {
         /// It should connect to the same chain as the ica_channel_id does
         transfer_channel_id: String,
     },
-    ReceiveIbcResponse(ReceiveIbcResponseMsg),
+    ReceiveIbcResponse(ReceiveIcaResponseMsg),
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]

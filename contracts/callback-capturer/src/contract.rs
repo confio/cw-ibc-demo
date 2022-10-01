@@ -6,7 +6,7 @@ use cosmwasm_std::{
 };
 
 use cw2::set_contract_version;
-use simple_ica::ReceiveIbcResponseMsg;
+use simple_ica::ReceiveIcaResponseMsg;
 
 use crate::error::ContractError;
 use crate::msg::{AdminResponse, ExecuteMsg, InstantiateMsg, QueryMsg, ResultResponse};
@@ -169,7 +169,7 @@ pub fn execute_receive_ibc_response(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    resp: ReceiveIbcResponseMsg,
+    resp: ReceiveIcaResponseMsg,
 ) -> Result<Response, ContractError> {
     // only the simple ica controller can send this message as callback
     let cfg = CONFIG.load(deps.storage)?;
@@ -314,7 +314,7 @@ mod tests {
             .unwrap(),
         );
         let info = mock_info(ica, &[]);
-        let msg = ExecuteMsg::ReceiveIbcResponse(ReceiveIbcResponseMsg {
+        let msg = ExecuteMsg::ReceiveIbcResponse(ReceiveIcaResponseMsg {
             id: callback.to_string(),
             msg: ack.clone(),
         });
