@@ -1,5 +1,5 @@
 [package]
-name = "simple-ica-controller"
+name = "simple-ica-client"
 version = "0.2.0"
 authors = ["Ethan Frey <ethanfrey@users.noreply.github.com>"]
 edition = "2021"

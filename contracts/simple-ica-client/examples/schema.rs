@@ -3,7 +3,7 @@ use std::fs::create_dir_all;
 
 use cosmwasm_schema::{export_schema, remove_schemas, schema_for};
 
-use simple_ica_controller::msg::{
+use simple_ica_client::msg::{
     AccountResponse, AdminResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse, QueryMsg,
 };
 

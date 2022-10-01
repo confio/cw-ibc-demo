@@ -11,5 +11,5 @@ pub const RESULTS: Map<&str, StdAck> = Map::new("results");
 #[derive(Serialize, Deserialize, Clone, PartialEq, JsonSchema, Debug)]
 pub struct Config {
     pub admin: Addr,
-    pub simple_ica_controller: Addr,
+    pub simple_ica_client: Addr,
 }

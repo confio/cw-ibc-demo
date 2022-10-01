@@ -26,7 +26,7 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
     let cfg = Config {
         admin: info.sender,
-        simple_ica_controller: deps.api.addr_validate(&msg.simple_ica_controller)?,
+        simple_ica_client: deps.api.addr_validate(&msg.simple_ica_client)?,
     };
     CONFIG.save(deps.storage, &cfg)?;
     Ok(Response::default())
@@ -74,13 +74,13 @@ pub fn execute_send_msgs(
         return Err(ContractError::Unauthorized {});
     }
 
-    let ica_msg = simple_ica_controller::msg::ExecuteMsg::SendMsgs {
+    let ica_msg = simple_ica_client::msg::ExecuteMsg::SendMsgs {
         channel_id,
         msgs,
         callback_id: Some(callback_id),
     };
     let msg = WasmMsg::Execute {
-        contract_addr: cfg.simple_ica_controller.into(),
+        contract_addr: cfg.simple_ica_client.into(),
         msg: to_binary(&ica_msg)?,
         funds: vec![],
     };
@@ -102,13 +102,13 @@ pub fn execute_ibc_query(
         return Err(ContractError::Unauthorized {});
     }
 
-    let ica_msg = simple_ica_controller::msg::ExecuteMsg::IbcQuery {
+    let ica_msg = simple_ica_client::msg::ExecuteMsg::IbcQuery {
         channel_id,
         msgs,
         callback_id: Some(callback_id),
     };
     let msg = WasmMsg::Execute {
-        contract_addr: cfg.simple_ica_controller.into(),
+        contract_addr: cfg.simple_ica_client.into(),
         msg: to_binary(&ica_msg)?,
         funds: vec![],
     };
@@ -128,9 +128,9 @@ pub fn execute_check_remote_balance(
         return Err(ContractError::Unauthorized {});
     }
 
-    let ica_msg = simple_ica_controller::msg::ExecuteMsg::CheckRemoteBalance { channel_id };
+    let ica_msg = simple_ica_client::msg::ExecuteMsg::CheckRemoteBalance { channel_id };
     let msg = WasmMsg::Execute {
-        contract_addr: cfg.simple_ica_controller.into(),
+        contract_addr: cfg.simple_ica_client.into(),
         msg: to_binary(&ica_msg)?,
         funds: vec![],
     };
@@ -151,12 +151,12 @@ pub fn execute_send_funds(
         return Err(ContractError::Unauthorized {});
     }
 
-    let ica_msg = simple_ica_controller::msg::ExecuteMsg::SendFunds {
+    let ica_msg = simple_ica_client::msg::ExecuteMsg::SendFunds {
         ica_channel_id,
         transfer_channel_id,
     };
     let msg = WasmMsg::Execute {
-        contract_addr: cfg.simple_ica_controller.into(),
+        contract_addr: cfg.simple_ica_client.into(),
         msg: to_binary(&ica_msg)?,
         funds: info.funds,
     };
@@ -173,7 +173,7 @@ pub fn execute_receive_ibc_response(
 ) -> Result<Response, ContractError> {
     // only the simple ica controller can send this message as callback
     let cfg = CONFIG.load(deps.storage)?;
-    if !cfg.simple_ica_controller.eq(&info.sender) {
+    if !cfg.simple_ica_client.eq(&info.sender) {
         return Err(ContractError::Unauthorized {});
     }
 
@@ -224,7 +224,7 @@ mod tests {
 
         // instantiate the contract
         let instantiate_msg = InstantiateMsg {
-            simple_ica_controller: ica.to_string(),
+            simple_ica_client: ica.to_string(),
         };
         let info = mock_info(alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
@@ -251,7 +251,7 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
         let expected = vec![SubMsg::new(WasmMsg::Execute {
             contract_addr: ica.to_string(),
-            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::SendMsgs {
+            msg: to_binary(&simple_ica_client::msg::ExecuteMsg::SendMsgs {
                 channel_id: channel.to_string(),
                 msgs,
                 callback_id: Some("test".to_string()),
@@ -274,7 +274,7 @@ mod tests {
 
         // instantiate the contract
         let instantiate_msg = InstantiateMsg {
-            simple_ica_controller: ica.to_string(),
+            simple_ica_client: ica.to_string(),
         };
         let info = mock_info(alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
@@ -296,7 +296,7 @@ mod tests {
         let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
         let expected = vec![SubMsg::new(WasmMsg::Execute {
             contract_addr: ica.to_string(),
-            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::IbcQuery {
+            msg: to_binary(&simple_ica_client::msg::ExecuteMsg::IbcQuery {
                 channel_id: channel.to_string(),
                 msgs: queries,
                 callback_id: Some(callback.to_string()),

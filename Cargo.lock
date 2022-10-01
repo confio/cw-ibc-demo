@@ -55,7 +55,7 @@ dependencies = [
  "schemars",
  "serde",
  "simple-ica",
- "simple-ica-controller",
+ "simple-ica-client",
  "thiserror",
 ]
 
@@ -613,7 +613,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "simple-ica-controller"
+name = "simple-ica-client"
 version = "0.2.0"
 dependencies = [
  "cosmwasm-schema",

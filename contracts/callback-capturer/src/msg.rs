@@ -6,7 +6,7 @@ use simple_ica::{ReceiveIcaResponseMsg, StdAck};
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub struct InstantiateMsg {
-    pub simple_ica_controller: String,
+    pub simple_ica_client: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
