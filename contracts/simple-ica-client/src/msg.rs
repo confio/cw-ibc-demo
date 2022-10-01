@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use simple_ica::StdAck;
 
 use crate::state::AccountData;
-use osmo_bindings::{OsmosisMsg, OsmosisQuery};
+use client_osmo_bindings::{OsmosisMsg, OsmosisQuery};
 /// This needs no info. Owner of the contract is whoever signed the InstantiateMsg.
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]

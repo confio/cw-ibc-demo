@@ -13,7 +13,7 @@ use crate::msg::{
     ListAccountsResponse, QueryMsg,
 };
 use crate::state::{Config, ACCOUNTS, CONFIG, LATEST_QUERIES};
-use osmo_bindings::{OsmosisMsg, OsmosisQuery};
+use client_osmo_bindings::{OsmosisMsg, OsmosisQuery};
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
