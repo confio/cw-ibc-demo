@@ -1,6 +1,6 @@
 [package]
 name = "simple-ica-host"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Ethan Frey <ethanfrey@users.noreply.github.com>"]
 edition = "2021"
 publish = false
@@ -28,7 +28,7 @@ overflow-checks = true
 backtraces = ["cosmwasm-std/backtraces"]
 
 [dependencies]
-simple-ica = { path = "../../packages/simple-ica"}
+simple-ica = { version = "0.2.0", path = "../../packages/simple-ica"}
 cosmwasm-std = { version = "1.0.0", features = ["iterator", "ibc3"] }
 cw-storage-plus = { version = "0.14.0" }
 cw-utils = { version = "0.14.0" }

@@ -43,7 +43,7 @@ checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
 name = "callback-capturer"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_matches",
  "cosmwasm-schema",
@@ -603,7 +603,7 @@ dependencies = [
 
 [[package]]
 name = "simple-ica"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -614,7 +614,7 @@ dependencies = [
 
 [[package]]
 name = "simple-ica-controller"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
@@ -628,7 +628,7 @@ dependencies = [
 
 [[package]]
 name = "simple-ica-host"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "cosmwasm-schema",
  "cosmwasm-std",
