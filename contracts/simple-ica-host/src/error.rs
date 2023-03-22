@@ -21,4 +21,7 @@ pub enum ContractError {
 
     #[error("Invalid reply id")]
     InvalidReplyId,
+
+    #[error("You cannot call internal messages directly")]
+    OnlySelfCall,
 }
