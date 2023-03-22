@@ -1,10 +1,10 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, to_vec, wasm_execute, BankMsg, Binary, ContractResult,
-    CosmosMsg, Deps, DepsMut, Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse,
-    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse,
-    IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo,
-    Order, QuerierWrapper, QueryRequest, QueryResponse, Reply, Response, StdError, StdResult,
-    SubMsg, SystemResult, WasmMsg,
+    ensure_eq, entry_point, from_slice, to_binary, to_vec, wasm_execute, BankMsg, Binary,
+    ContractResult, CosmosMsg, Deps, DepsMut, Empty, Env, Event, Ibc3ChannelOpenResponse,
+    IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcChannelOpenResponse, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, MessageInfo, Order, QuerierWrapper, QueryRequest, QueryResponse, Reply,
+    Response, StdError, StdResult, SubMsg, SubMsgResult, SystemResult, WasmMsg,
 };
 use cw_utils::parse_reply_instantiate_data;
 use simple_ica::{
@@ -14,12 +14,14 @@ use simple_ica::{
 
 use crate::error::ContractError;
 use crate::msg::{
-    AccountInfo, AccountResponse, InstantiateMsg, ListAccountsResponse, QueryMsg, ReflectExecuteMsg,
+    AccountInfo, AccountResponse, ExecuteMsg, InstantiateMsg, ListAccountsResponse, QueryMsg,
+    ReflectExecuteMsg,
 };
 use crate::state::{Config, ACCOUNTS, CONFIG, PENDING, RESULTS};
 
 pub const RECEIVE_DISPATCH_ID: u64 = 1234;
 pub const INIT_CALLBACK_ID: u64 = 7890;
+pub const PROCESS_IBC_ID: u64 = 5432;
 
 #[entry_point]
 pub fn instantiate(
@@ -35,6 +37,20 @@ pub fn instantiate(
     CONFIG.save(deps.storage, &cfg)?;
 
     Ok(Response::new())
+}
+
+#[entry_point]
+pub fn execute(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    msg: ExecuteMsg,
+) -> Result<Response, ContractError> {
+    match msg {
+        ExecuteMsg::ProcessIbc { caller, packet } => {
+            process_ibc_packet(deps, env, info, caller, packet)
+        }
+    }
 }
 
 #[entry_point]
@@ -165,6 +181,7 @@ pub fn reply(deps: DepsMut, _env: Env, reply: Reply) -> Result<Response, Contrac
     match reply.id {
         RECEIVE_DISPATCH_ID => reply_dispatch_callback(deps, reply),
         INIT_CALLBACK_ID => reply_init_callback(deps, reply),
+        PROCESS_IBC_ID => reply_process_ibc(deps, reply),
         _ => Err(ContractError::InvalidReplyId),
     }
 }
@@ -199,20 +216,79 @@ pub fn reply_init_callback(deps: DepsMut, reply: Reply) -> Result<Response, Cont
     Ok(Response::new())
 }
 
+/// This takes the submessage and encodes the proper ack field
+pub fn reply_process_ibc(_deps: DepsMut, reply: Reply) -> Result<Response, ContractError> {
+    let ack = match reply.result {
+        // on success, we pass the data field as ack
+        SubMsgResult::Ok(res) => res.data.unwrap(),
+        // on success, we pass the data field as ack
+        SubMsgResult::Err(err) => StdAck::fail(err),
+    };
+    Ok(Response::new().set_data(ack))
+}
+
 #[entry_point]
-/// we look for a the proper reflect contract to relay to and send the message
-/// We cannot return any meaningful response value as we do not know the response value
-/// of execution. We just return ok if we dispatched, error if we failed to dispatch
+/// This is a demo of a new way to handle both error ack and abort in a CosmWasm contract
+/// See https://github.com/CosmWasm/wasmd/issues/1220 and
+/// https://github.com/CosmWasm/cosmwasm/pull/1640 for context
+///
+/// Idea is that a top-level error will always be a full tx abort (fail tx, don't write IBC ack).
+/// If we want to write an ack (either success or error), we return success here with the packet,
+/// which means we must handle all state rollback in the contract itself. The general flow looks like:
+///
+/// 1. "Ante handler"-like pre-process - perform all checks this is valid and return error if not. If this
+/// writes state on success state (eg take fee), this will be committed even on error ack.
+/// 2. Wrapped Dispatch - call self in a SubMsg::reply_always, including all logic that should return an error ack
+/// on failure. This call must return a properly encoded ack packet in the data field in success case.
+/// 3. Handle Reply - If Wrapped Dispatch is success, `set_data` to the response of the submessage.
+/// If Wrapped Dispatch is a failure, all those state changes would be be reverted. We handle the error by
+/// embedded the string in an error ack, and returning a successful response with that error ack stored via `set_data`
 pub fn ibc_packet_receive(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     msg: IbcPacketReceiveMsg,
 ) -> Result<IbcReceiveResponse, ContractError> {
+    // Any error in this initial checks should abort the whole IBC transaction
     let packet = msg.packet;
-    // which local channel did this packet come on
+
+    // ensure channel is valid and registered
     let caller = packet.dest.channel_id;
+    ACCOUNTS.load(deps.storage, &caller)?;
+
+    // ensure packet can be parsed
     let msg: PacketMsg = from_slice(&packet.data)?;
-    match msg {
+
+    // now, dispatch to self to handle logic
+    let sub = SubMsg::reply_always(
+        WasmMsg::Execute {
+            contract_addr: env.contract.address.into_string(),
+            msg: to_binary(&ExecuteMsg::ProcessIbc {
+                caller,
+                packet: msg,
+            })?,
+            funds: vec![],
+        },
+        PROCESS_IBC_ID,
+    );
+
+    Ok(IbcReceiveResponse::new().set_ack(b"").add_submessage(sub))
+}
+
+pub fn process_ibc_packet(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    caller: String,
+    packet: PacketMsg,
+) -> Result<Response, ContractError> {
+    // can only be exeucted via self call
+    ensure_eq!(
+        info.sender,
+        env.contract.address,
+        ContractError::OnlySelfCall
+    );
+
+    match packet {
         PacketMsg::Dispatch { msgs, .. } => receive_dispatch(deps, caller, msgs),
         PacketMsg::IbcQuery { msgs, .. } => receive_query(deps.as_ref(), msgs),
         PacketMsg::WhoAmI {} => receive_who_am_i(deps, caller),
@@ -237,10 +313,7 @@ fn unparsed_query(
 }
 
 // processes IBC query
-fn receive_query(
-    deps: Deps,
-    msgs: Vec<QueryRequest<Empty>>,
-) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_query(deps: Deps, msgs: Vec<QueryRequest<Empty>>) -> Result<Response, ContractError> {
     let mut results = vec![];
 
     for query in msgs {
@@ -250,26 +323,26 @@ fn receive_query(
     let response = IbcQueryResponse { results };
 
     let acknowledgement = StdAck::success(&response);
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
+    Ok(Response::new()
+        .set_data(acknowledgement)
         .add_attribute("action", "receive_ibc_query"))
 }
 
 // processes PacketMsg::WhoAmI variant
-fn receive_who_am_i(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_who_am_i(deps: DepsMut, caller: String) -> Result<Response, ContractError> {
     let account = ACCOUNTS.load(deps.storage, &caller)?;
     let response = WhoAmIResponse {
         account: account.into(),
     };
     let acknowledgement = StdAck::success(&response);
     // and we are golden
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
+    Ok(Response::new()
+        .set_data(acknowledgement)
         .add_attribute("action", "receive_who_am_i"))
 }
 
 // processes PacketMsg::Balances variant
-fn receive_balances(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse, ContractError> {
+fn receive_balances(deps: DepsMut, caller: String) -> Result<Response, ContractError> {
     let account = ACCOUNTS.load(deps.storage, &caller)?;
     let balances = deps.querier.query_all_balances(&account)?;
     let response = BalancesResponse {
@@ -278,8 +351,8 @@ fn receive_balances(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse,
     };
     let acknowledgement = StdAck::success(&response);
     // and we are golden
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
+    Ok(Response::new()
+        .set_data(acknowledgement)
         .add_attribute("action", "receive_balances"))
 }
 
@@ -288,7 +361,7 @@ fn receive_dispatch(
     deps: DepsMut,
     caller: String,
     msgs: Vec<CosmosMsg>,
-) -> Result<IbcReceiveResponse, ContractError> {
+) -> Result<Response, ContractError> {
     // what is the reflect contract here
     let reflect_addr = ACCOUNTS.load(deps.storage, &caller)?;
 
@@ -305,8 +378,8 @@ fn receive_dispatch(
     // reset the data field
     RESULTS.save(deps.storage, &vec![])?;
 
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
+    Ok(Response::new()
+        .set_data(acknowledgement)
         .add_submessage(msg)
         .add_attribute("action", "receive_dispatch"))
 }
@@ -530,6 +603,8 @@ mod tests {
 
         // register the channel
         connect(deps.as_mut(), channel_id, account);
+
+        // TODO: change the following tests to match new reality - harder to test until ibc-multi-test is ready
 
         // receive a packet for an unregistered channel returns app-level error (not Result::Err)
         let msg = mock_ibc_packet_recv(channel_id, &ibc_msg).unwrap();
