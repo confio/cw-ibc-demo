@@ -1,12 +1,12 @@
 use cosmwasm_std::{
-    entry_point, from_slice, to_binary, to_vec, wasm_execute, BankMsg, Binary, ContractResult,
-    CosmosMsg, Deps, DepsMut, Empty, Env, Event, Ibc3ChannelOpenResponse, IbcBasicResponse,
-    IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcChannelOpenResponse,
-    IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, MessageInfo,
-    Order, QuerierWrapper, QueryRequest, QueryResponse, Reply, Response, StdError, StdResult,
-    SubMsg, SystemResult, WasmMsg,
+    entry_point, from_json, to_json_binary, to_json_vec, wasm_execute, BankMsg, Binary,
+    ContractResult, CosmosMsg, Deps, DepsMut, Empty, Env, Event, Ibc3ChannelOpenResponse,
+    IbcBasicResponse, IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg,
+    IbcChannelOpenResponse, IbcPacketAckMsg, IbcPacketReceiveMsg, IbcPacketTimeoutMsg,
+    IbcReceiveResponse, MessageInfo, Order, QuerierWrapper, QueryRequest, QueryResponse, Reply,
+    Response, StdError, StdResult, SubMsg, SystemResult, WasmMsg,
 };
-use cw_utils::parse_reply_instantiate_data;
+use cw_utils::parse_instantiate_response_data;
 use simple_ica::{
     check_order, check_version, BalancesResponse, DispatchResponse, IbcQueryResponse, PacketMsg,
     StdAck, WhoAmIResponse, IBC_APP_VERSION,
@@ -40,8 +40,8 @@ pub fn instantiate(
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     match msg {
-        QueryMsg::Account { channel_id } => to_binary(&query_account(deps, channel_id)?),
-        QueryMsg::ListAccounts {} => to_binary(&query_list_accounts(deps)?),
+        QueryMsg::Account { channel_id } => to_json_binary(&query_account(deps, channel_id)?),
+        QueryMsg::ListAccounts {} => to_json_binary(&query_list_accounts(deps)?),
     }
 }
 
@@ -106,7 +106,7 @@ pub fn ibc_channel_connect(
     let msg = WasmMsg::Instantiate {
         admin: None,
         code_id: cfg.cw1_code_id,
-        msg: to_binary(&init_msg)?,
+        msg: to_json_binary(&init_msg)?,
         funds: vec![],
         label: format!("ibc-reflect-{}", chan_id),
     };
@@ -186,7 +186,10 @@ pub fn reply_init_callback(deps: DepsMut, reply: Reply) -> Result<Response, Cont
     PENDING.remove(deps.storage);
 
     // parse contract info from data
-    let raw_addr = parse_reply_instantiate_data(reply)?.contract_address;
+    let sub_msg_response = reply.result.into_result().map_err(StdError::generic_err)?;
+    let raw_addr =
+        parse_instantiate_response_data(sub_msg_response.data.unwrap_or_default().as_slice())?
+            .contract_address;
     let contract_addr = deps.api.addr_validate(&raw_addr)?;
 
     // store id -> contract_addr if it is empty
@@ -211,7 +214,7 @@ pub fn ibc_packet_receive(
     let packet = msg.packet;
     // which local channel did this packet come on
     let caller = packet.dest.channel_id;
-    let msg: PacketMsg = from_slice(&packet.data)?;
+    let msg: PacketMsg = from_json(&packet.data)?;
     match msg {
         PacketMsg::Dispatch { msgs, .. } => receive_dispatch(deps, caller, msgs),
         PacketMsg::IbcQuery { msgs, .. } => receive_query(deps.as_ref(), msgs),
@@ -224,7 +227,7 @@ fn unparsed_query(
     querier: QuerierWrapper<'_, Empty>,
     request: &QueryRequest<Empty>,
 ) -> Result<Binary, ContractError> {
-    let raw = to_vec(request)?;
+    let raw = to_json_vec(request)?;
     match querier.raw_query(&raw) {
         SystemResult::Err(system_err) => {
             Err(StdError::generic_err(format!("Querier system error: {}", system_err)).into())
@@ -250,9 +253,7 @@ fn receive_query(
     let response = IbcQueryResponse { results };
 
     let acknowledgement = StdAck::success(&response);
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
-        .add_attribute("action", "receive_ibc_query"))
+    Ok(IbcReceiveResponse::new(acknowledgement).add_attribute("action", "receive_ibc_query"))
 }
 
 // processes PacketMsg::WhoAmI variant
@@ -263,9 +264,7 @@ fn receive_who_am_i(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse,
     };
     let acknowledgement = StdAck::success(&response);
     // and we are golden
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
-        .add_attribute("action", "receive_who_am_i"))
+    Ok(IbcReceiveResponse::new(acknowledgement).add_attribute("action", "receive_who_am_i"))
 }
 
 // processes PacketMsg::Balances variant
@@ -278,9 +277,7 @@ fn receive_balances(deps: DepsMut, caller: String) -> Result<IbcReceiveResponse,
     };
     let acknowledgement = StdAck::success(&response);
     // and we are golden
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
-        .add_attribute("action", "receive_balances"))
+    Ok(IbcReceiveResponse::new(acknowledgement).add_attribute("action", "receive_balances"))
 }
 
 // processes PacketMsg::Dispatch variant
@@ -305,8 +302,7 @@ fn receive_dispatch(
     // reset the data field
     RESULTS.save(deps.storage, &vec![])?;
 
-    Ok(IbcReceiveResponse::new()
-        .set_ack(acknowledgement)
+    Ok(IbcReceiveResponse::new(acknowledgement)
         .add_submessage(msg)
         .add_attribute("action", "receive_dispatch"))
 }
@@ -335,13 +331,14 @@ pub fn ibc_packet_timeout(
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{
-        mock_dependencies, mock_env, mock_ibc_channel_close_init, mock_ibc_channel_connect_ack,
-        mock_ibc_channel_open_init, mock_ibc_channel_open_try, mock_ibc_packet_recv, mock_info,
-        mock_wasmd_attr, MockApi, MockQuerier, MockStorage, MOCK_CONTRACT_ADDR,
+        message_info, mock_dependencies, mock_env, mock_ibc_channel_close_init,
+        mock_ibc_channel_connect_ack, mock_ibc_channel_open_init, mock_ibc_channel_open_try,
+        mock_ibc_packet_recv, mock_wasmd_attr, MockApi, MockQuerier, MockStorage,
+        MOCK_CONTRACT_ADDR,
     };
     use cosmwasm_std::{
-        attr, coin, coins, from_slice, BankMsg, Binary, OwnedDeps, SubMsgResponse, SubMsgResult,
-        WasmMsg,
+        attr, coin, coins, from_json, Addr, BankMsg, Binary, OwnedDeps, SubMsgResponse,
+        SubMsgResult, WasmMsg,
     };
     use simple_ica::{APP_ORDER, BAD_APP_ORDER};
 
@@ -356,20 +353,21 @@ mod tests {
         let msg = InstantiateMsg {
             cw1_code_id: REFLECT_ID,
         };
-        let info = mock_info(CREATOR, &[]);
+        let creator = deps.api.addr_make(CREATOR);
+        let info = message_info(&creator, &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
         deps
     }
 
-    fn fake_data(reflect_addr: &str) -> Binary {
+    fn fake_data(reflect_addr: &Addr) -> Binary {
         // works with length < 128
-        let mut encoded = vec![0x0a, reflect_addr.len() as u8];
+        let mut encoded = vec![0x0a, reflect_addr.as_str().len() as u8];
         encoded.extend(reflect_addr.as_bytes());
         Binary::from(encoded)
     }
 
-    fn fake_events(reflect_addr: &str) -> Vec<Event> {
+    fn fake_events(reflect_addr: &Addr) -> Vec<Event> {
         let event = Event::new("instantiate").add_attributes(vec![
             attr("code_id", "17"),
             // We have to force this one to avoid the debug assertion against _
@@ -380,9 +378,7 @@ mod tests {
 
     // connect will run through the entire handshake to set up a proper connect and
     // save the account (tested in detail in `proper_handshake_flow`)
-    fn connect(mut deps: DepsMut, channel_id: &str, account: impl Into<String>) {
-        let account: String = account.into();
-
+    fn connect(mut deps: DepsMut, channel_id: &str, account: Addr) {
         let handshake_open = mock_ibc_channel_open_init(channel_id, APP_ORDER, IBC_APP_VERSION);
         // first we try to open with a valid handshake
         ibc_channel_open(deps.branch(), mock_env(), handshake_open).unwrap();
@@ -405,7 +401,10 @@ mod tests {
             result: SubMsgResult::Ok(SubMsgResponse {
                 events: fake_events(&account),
                 data: Some(fake_data(&account)),
+                msg_responses: vec![],
             }),
+            payload: Binary::default(),
+            gas_used: 0,
         };
         reply(deps.branch(), mock_env(), response).unwrap();
     }
@@ -415,7 +414,7 @@ mod tests {
         let mut deps = mock_dependencies();
 
         let msg = InstantiateMsg { cw1_code_id: 17 };
-        let info = mock_info("creator", &[]);
+        let info = message_info(&deps.api.addr_make("creator"), &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len())
     }
@@ -468,27 +467,31 @@ mod tests {
 
         // no accounts set yet
         let raw = query(deps.as_ref(), mock_env(), QueryMsg::ListAccounts {}).unwrap();
-        let res: ListAccountsResponse = from_slice(&raw).unwrap();
+        let res: ListAccountsResponse = from_json(&raw).unwrap();
         assert_eq!(0, res.accounts.len());
 
         // fake a reply and ensure this works
+        let reflect_addr = deps.api.addr_make(REFLECT_ADDR);
         let response = Reply {
             id,
             result: SubMsgResult::Ok(SubMsgResponse {
-                events: fake_events(REFLECT_ADDR),
-                data: Some(fake_data(REFLECT_ADDR)),
+                events: fake_events(&reflect_addr),
+                data: Some(fake_data(&reflect_addr)),
+                msg_responses: vec![],
             }),
+            payload: Binary::default(),
+            gas_used: 0,
         };
         reply(deps.as_mut(), mock_env(), response).unwrap();
 
         // ensure this is now registered
         let raw = query(deps.as_ref(), mock_env(), QueryMsg::ListAccounts {}).unwrap();
-        let res: ListAccountsResponse = from_slice(&raw).unwrap();
+        let res: ListAccountsResponse = from_json(&raw).unwrap();
         assert_eq!(1, res.accounts.len());
         assert_eq!(
             &res.accounts[0],
             &AccountInfo {
-                account: REFLECT_ADDR.into(),
+                account: reflect_addr.clone().into(),
                 channel_id: channel_id.to_string(),
             }
         );
@@ -502,8 +505,8 @@ mod tests {
             },
         )
         .unwrap();
-        let res: AccountResponse = from_slice(&raw).unwrap();
-        assert_eq!(res.account.unwrap(), REFLECT_ADDR);
+        let res: AccountResponse = from_json(&raw).unwrap();
+        assert_eq!(res.account.unwrap(), reflect_addr.to_string());
     }
 
     #[test]
@@ -511,7 +514,7 @@ mod tests {
         let mut deps = setup();
 
         let channel_id = "channel-123";
-        let account = "acct-123";
+        let account = deps.api.addr_make("acct-123");
 
         // receive a packet for an unregistered channel returns app-level error (not Result::Err)
         let msgs_to_dispatch = vec![BankMsg::Send {
@@ -529,14 +532,14 @@ mod tests {
         ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap_err();
 
         // register the channel
-        connect(deps.as_mut(), channel_id, account);
+        connect(deps.as_mut(), channel_id, account.clone());
 
         // receive a packet for an unregistered channel returns app-level error (not Result::Err)
         let msg = mock_ibc_packet_recv(channel_id, &ibc_msg).unwrap();
         let res = ibc_packet_receive(deps.as_mut(), mock_env(), msg).unwrap();
 
         // assert app-level success
-        let ack: StdAck = from_slice(&res.acknowledgement).unwrap();
+        let ack: StdAck = from_json(res.acknowledgement.unwrap()).unwrap();
         ack.unwrap();
 
         // and we dispatch the BankMsg via submessage
@@ -550,10 +553,10 @@ mod tests {
             funds,
         }) = &res.messages[0].msg
         {
-            assert_eq!(account, contract_addr.as_str());
+            assert_eq!(account.as_str(), contract_addr.as_str());
             assert_eq!(0, funds.len());
             // parse the message - should callback with proper channel_id
-            let rmsg: cw1_whitelist::msg::ExecuteMsg = from_slice(msg).unwrap();
+            let rmsg: cw1_whitelist::msg::ExecuteMsg = from_json(msg).unwrap();
             assert_eq!(
                 rmsg,
                 cw1_whitelist::msg::ExecuteMsg::Execute {
@@ -575,19 +578,25 @@ mod tests {
         let mut deps = setup();
 
         let channel_id = "channel-123";
-        let account = "acct-123";
+        let account = deps.api.addr_make("acct-123");
 
         // register the channel
-        connect(deps.as_mut(), channel_id, account);
+        connect(deps.as_mut(), channel_id, account.clone());
         // assign it some funds
         let funds = vec![coin(123456, "uatom"), coin(7654321, "tgrd")];
-        deps.querier.update_balance(account, funds.clone());
+        deps.querier
+            .bank
+            .update_balance(account.clone(), funds.clone());
 
         // channel should be listed and have balance
         let raw = query(deps.as_ref(), mock_env(), QueryMsg::ListAccounts {}).unwrap();
-        let res: ListAccountsResponse = from_slice(&raw).unwrap();
+        let res: ListAccountsResponse = from_json(&raw).unwrap();
         assert_eq!(1, res.accounts.len());
-        let balance = deps.as_ref().querier.query_all_balances(account).unwrap();
+        let balance = deps
+            .as_ref()
+            .querier
+            .query_all_balances(account.clone())
+            .unwrap();
         assert_eq!(funds, balance);
 
         // close the channel
@@ -600,8 +609,8 @@ mod tests {
             contract_addr, msg, ..
         }) = &res.messages[0].msg
         {
-            assert_eq!(contract_addr.as_str(), account);
-            let reflect: ReflectExecuteMsg = from_slice(msg).unwrap();
+            assert_eq!(contract_addr.as_str(), account.as_str());
+            let reflect: ReflectExecuteMsg = from_json(msg).unwrap();
             match reflect {
                 ReflectExecuteMsg::ReflectMsg { msgs } => {
                     assert_eq!(1, msgs.len());
@@ -621,7 +630,7 @@ mod tests {
 
         // and removes the account lookup
         let raw = query(deps.as_ref(), mock_env(), QueryMsg::ListAccounts {}).unwrap();
-        let res: ListAccountsResponse = from_slice(&raw).unwrap();
+        let res: ListAccountsResponse = from_json(&raw).unwrap();
         assert_eq!(0, res.accounts.len());
     }
 }

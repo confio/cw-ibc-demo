@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, CosmosMsg, Deps, DepsMut, Empty, Env, IbcMsg, MessageInfo, Order, QueryRequest,
+    to_json_binary, CosmosMsg, Deps, DepsMut, Empty, Env, IbcMsg, MessageInfo, Order, QueryRequest,
     QueryResponse, Response, StdError, StdResult,
 };
 
@@ -94,7 +94,7 @@ pub fn execute_send_msgs(
     };
     let msg = IbcMsg::SendPacket {
         channel_id,
-        data: to_binary(&packet)?,
+        data: to_json_binary(&packet)?,
         timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
     };
 
@@ -121,7 +121,7 @@ pub fn execute_ibc_query(
     };
     let msg = IbcMsg::SendPacket {
         channel_id,
-        data: to_binary(&packet)?,
+        data: to_json_binary(&packet)?,
         timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
     };
 
@@ -149,7 +149,7 @@ pub fn execute_check_remote_balance(
     let packet = PacketMsg::Balances {};
     let msg = IbcMsg::SendPacket {
         channel_id,
-        data: to_binary(&packet)?,
+        data: to_json_binary(&packet)?,
         timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
     };
 
@@ -199,6 +199,7 @@ pub fn execute_send_funds(
         to_address: remote_addr,
         amount,
         timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
+        memo: None,
     };
 
     let res = Response::new()
@@ -210,11 +211,11 @@ pub fn execute_send_funds(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<QueryResponse> {
     match msg {
-        QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
-        QueryMsg::Account { channel_id } => to_binary(&query_account(deps, channel_id)?),
-        QueryMsg::ListAccounts {} => to_binary(&query_list_accounts(deps)?),
+        QueryMsg::Admin {} => to_json_binary(&query_admin(deps)?),
+        QueryMsg::Account { channel_id } => to_json_binary(&query_account(deps, channel_id)?),
+        QueryMsg::ListAccounts {} => to_json_binary(&query_list_accounts(deps)?),
         QueryMsg::LatestQueryResult { channel_id } => {
-            to_binary(&query_latest_ibc_query_result(deps, channel_id)?)
+            to_json_binary(&query_latest_ibc_query_result(deps, channel_id)?)
         }
     }
 }
@@ -249,19 +250,20 @@ fn query_admin(deps: Deps) -> StdResult<AdminResponse> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
 
     const CREATOR: &str = "creator";
 
     #[test]
     fn instantiate_works() {
         let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make(CREATOR);
         let msg = InstantiateMsg {};
-        let info = mock_info(CREATOR, &[]);
+        let info = message_info(&creator, &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
 
         let admin = query_admin(deps.as_ref()).unwrap();
-        assert_eq!(CREATOR, admin.admin.as_str());
+        assert_eq!(creator.to_string(), admin.admin);
     }
 }

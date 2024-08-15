@@ -1,4 +1,4 @@
-use cosmwasm_std::{from_slice, to_binary, Binary, Coin, CosmosMsg, Empty, QueryRequest};
+use cosmwasm_std::{from_json, to_json_binary, Binary, Coin, CosmosMsg, Empty, QueryRequest};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub enum StdAck {
 impl StdAck {
     // create a serialized success message
     pub fn success(data: impl Serialize) -> Binary {
-        let res = to_binary(&data).unwrap();
+        let res = to_json_binary(&data).unwrap();
         StdAck::Result(res).ack()
     }
 
@@ -44,7 +44,7 @@ impl StdAck {
     }
 
     pub fn ack(&self) -> Binary {
-        to_binary(self).unwrap()
+        to_json_binary(self).unwrap()
     }
 
     pub fn unwrap(self) -> Binary {
@@ -55,7 +55,7 @@ impl StdAck {
     }
 
     pub fn unwrap_into<T: DeserializeOwned>(self) -> T {
-        from_slice(&self.unwrap()).unwrap()
+        from_json(self.unwrap()).unwrap()
     }
 
     pub fn unwrap_err(self) -> String {

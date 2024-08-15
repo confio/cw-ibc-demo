@@ -1,7 +1,7 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_slice, to_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
+    from_json, to_json_binary, DepsMut, Env, Ibc3ChannelOpenResponse, IbcBasicResponse,
     IbcChannelCloseMsg, IbcChannelConnectMsg, IbcChannelOpenMsg, IbcMsg, IbcPacketAckMsg,
     IbcPacketReceiveMsg, IbcPacketTimeoutMsg, IbcReceiveResponse, StdResult,
 };
@@ -54,7 +54,7 @@ pub fn ibc_channel_connect(
     let packet = PacketMsg::WhoAmI {};
     let msg = IbcMsg::SendPacket {
         channel_id: channel_id.clone(),
-        data: to_binary(&packet)?,
+        data: to_json_binary(&packet)?,
         timeout: env.block.time.plus_seconds(PACKET_LIFETIME).into(),
     };
 
@@ -89,9 +89,7 @@ pub fn ibc_packet_receive(
     _env: Env,
     _packet: IbcPacketReceiveMsg,
 ) -> StdResult<IbcReceiveResponse> {
-    Ok(IbcReceiveResponse::new()
-        .set_ack(b"{}")
-        .add_attribute("action", "ibc_packet_ack"))
+    Ok(IbcReceiveResponse::new(b"{}").add_attribute("action", "ibc_packet_ack"))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -103,8 +101,8 @@ pub fn ibc_packet_ack(
     // which local channel was this packet send from
     let caller = msg.original_packet.src.channel_id.clone();
     // we need to parse the ack based on our request
-    let original_packet: PacketMsg = from_slice(&msg.original_packet.data)?;
-    let res: StdAck = from_slice(&msg.acknowledgement.data)?;
+    let original_packet: PacketMsg = from_json(&msg.original_packet.data)?;
+    let res: StdAck = from_json(&msg.acknowledgement.data)?;
 
     match original_packet {
         PacketMsg::Dispatch {
@@ -135,7 +133,7 @@ fn acknowledge_dispatch(
     let res = IbcBasicResponse::new().add_attribute("action", "acknowledge_dispatch");
     match callback_id {
         Some(id) => {
-            let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
+            let msg: StdAck = from_json(&ack.acknowledgement.data)?;
             // Send IBC packet ack message to another contract
             let res = res
                 .add_attribute("callback_id", &id)
@@ -155,7 +153,7 @@ fn acknowledge_query(
     callback_id: Option<String>,
     ack: IbcPacketAckMsg,
 ) -> Result<IbcBasicResponse, ContractError> {
-    let msg: StdAck = from_slice(&ack.acknowledgement.data)?;
+    let msg: StdAck = from_json(&ack.acknowledgement.data)?;
 
     // store IBC response for later querying from the smart contract??
     LATEST_QUERIES.save(
@@ -187,7 +185,7 @@ fn acknowledge_who_am_i(
 ) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let WhoAmIResponse { account } = match ack {
-        StdAck::Result(res) => from_slice(&res)?,
+        StdAck::Result(res) => from_json(&res)?,
         StdAck::Error(e) => {
             return Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_who_am_i")
@@ -220,7 +218,7 @@ fn acknowledge_balances(
 ) -> Result<IbcBasicResponse, ContractError> {
     // ignore errors (but mention in log)
     let BalancesResponse { account, balances } = match ack {
-        StdAck::Result(res) => from_slice(&res)?,
+        StdAck::Result(res) => from_json(&res)?,
         StdAck::Error(e) => {
             return Ok(IbcBasicResponse::new()
                 .add_attribute("action", "acknowledge_balances")
@@ -264,9 +262,9 @@ mod tests {
     use crate::msg::{AccountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
 
     use cosmwasm_std::testing::{
-        mock_dependencies, mock_env, mock_ibc_channel_connect_ack, mock_ibc_channel_open_init,
-        mock_ibc_channel_open_try, mock_ibc_packet_ack, mock_info, MockApi, MockQuerier,
-        MockStorage,
+        message_info, mock_dependencies, mock_env, mock_ibc_channel_connect_ack,
+        mock_ibc_channel_open_init, mock_ibc_channel_open_try, mock_ibc_packet_ack, MockApi,
+        MockQuerier, MockStorage,
     };
     use cosmwasm_std::{coin, coins, BankMsg, CosmosMsg, IbcAcknowledgement, OwnedDeps};
     use simple_ica::{APP_ORDER, BAD_APP_ORDER, IBC_APP_VERSION};
@@ -275,8 +273,9 @@ mod tests {
 
     fn setup() -> OwnedDeps<MockStorage, MockApi, MockQuerier> {
         let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make(CREATOR);
         let msg = InstantiateMsg {};
-        let info = mock_info(CREATOR, &[]);
+        let info = message_info(&creator, &[]);
         let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(0, res.messages.len());
         deps
@@ -342,7 +341,7 @@ mod tests {
             channel_id: channel_id.into(),
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
-        let acct: AccountResponse = from_slice(&r).unwrap();
+        let acct: AccountResponse = from_json(&r).unwrap();
         assert!(acct.remote_addr.is_none());
         assert!(acct.remote_balance.is_empty());
         assert_eq!(0, acct.last_update_time.nanos());
@@ -356,7 +355,7 @@ mod tests {
             channel_id: channel_id.into(),
         };
         let r = query(deps.as_ref(), mock_env(), q).unwrap();
-        let acct: AccountResponse = from_slice(&r).unwrap();
+        let acct: AccountResponse = from_json(&r).unwrap();
         assert_eq!(acct.remote_addr.unwrap(), remote_addr);
         assert!(acct.remote_balance.is_empty());
         assert_eq!(0, acct.last_update_time.nanos());
@@ -369,6 +368,7 @@ mod tests {
 
         // init contract
         let mut deps = setup();
+        let creator = deps.api.addr_make(CREATOR);
         // channel handshake
         connect(deps.as_mut(), channel_id);
         // get feedback from WhoAmI packet
@@ -385,14 +385,14 @@ mod tests {
             msgs: msgs_to_dispatch,
             callback_id: None,
         };
-        let info = mock_info(CREATOR, &[]);
+        let info = message_info(&creator, &[]);
         let mut res = execute(deps.as_mut(), mock_env(), info, handle_msg).unwrap();
         assert_eq!(1, res.messages.len());
         let msg = match res.messages.swap_remove(0).msg {
             CosmosMsg::Ibc(IbcMsg::SendPacket {
                 channel_id, data, ..
             }) => {
-                let ack = IbcAcknowledgement::new(StdAck::success(&()));
+                let ack = IbcAcknowledgement::new(StdAck::success(()));
                 let mut msg = mock_ibc_packet_ack(&channel_id, &1u32, ack).unwrap();
                 msg.original_packet.data = data;
                 msg
@@ -413,6 +413,7 @@ mod tests {
 
         // init contract
         let mut deps = setup();
+        let creator = deps.api.addr_make(CREATOR);
         // channel handshake
         connect(deps.as_mut(), reflect_channel_id);
         // get feedback from WhoAmI packet
@@ -423,7 +424,7 @@ mod tests {
             ica_channel_id: "random-channel".into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
-        let info = mock_info(CREATOR, &coins(12344, "utrgd"));
+        let info = message_info(&creator, &coins(12344, "utrgd"));
         execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
 
         // let's try with no sent funds in the message
@@ -431,7 +432,7 @@ mod tests {
             ica_channel_id: reflect_channel_id.into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
-        let info = mock_info(CREATOR, &[]);
+        let info = message_info(&creator, &[]);
         execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
 
         // 3rd times the charm
@@ -439,7 +440,7 @@ mod tests {
             ica_channel_id: reflect_channel_id.into(),
             transfer_channel_id: transfer_channel_id.into(),
         };
-        let info = mock_info(CREATOR, &coins(12344, "utrgd"));
+        let info = message_info(&creator, &coins(12344, "utrgd"));
         let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
         assert_eq!(1, res.messages.len());
         match &res.messages[0].msg {
@@ -448,6 +449,7 @@ mod tests {
                 to_address,
                 amount,
                 timeout,
+                memo: _,
             }) => {
                 assert_eq!(transfer_channel_id, channel_id.as_str());
                 assert_eq!(remote_addr, to_address.as_str());

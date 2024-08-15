@@ -1,8 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest, Response,
-    StdResult, WasmMsg,
+    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Empty, Env, MessageInfo, QueryRequest,
+    Response, StdResult, WasmMsg,
 };
 
 use cw2::set_contract_version;
@@ -81,7 +81,7 @@ pub fn execute_send_msgs(
     };
     let msg = WasmMsg::Execute {
         contract_addr: cfg.simple_ica_controller.into(),
-        msg: to_binary(&ica_msg)?,
+        msg: to_json_binary(&ica_msg)?,
         funds: vec![],
     };
 
@@ -109,7 +109,7 @@ pub fn execute_ibc_query(
     };
     let msg = WasmMsg::Execute {
         contract_addr: cfg.simple_ica_controller.into(),
-        msg: to_binary(&ica_msg)?,
+        msg: to_json_binary(&ica_msg)?,
         funds: vec![],
     };
 
@@ -131,7 +131,7 @@ pub fn execute_check_remote_balance(
     let ica_msg = simple_ica_controller::msg::ExecuteMsg::CheckRemoteBalance { channel_id };
     let msg = WasmMsg::Execute {
         contract_addr: cfg.simple_ica_controller.into(),
-        msg: to_binary(&ica_msg)?,
+        msg: to_json_binary(&ica_msg)?,
         funds: vec![],
     };
 
@@ -157,7 +157,7 @@ pub fn execute_send_funds(
     };
     let msg = WasmMsg::Execute {
         contract_addr: cfg.simple_ica_controller.into(),
-        msg: to_binary(&ica_msg)?,
+        msg: to_json_binary(&ica_msg)?,
         funds: info.funds,
     };
 
@@ -188,8 +188,8 @@ pub fn execute_receive_ibc_response(
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::Admin {} => to_binary(&query_admin(deps)?),
-        QueryMsg::Result { id } => to_binary(&query_result(deps, id)?),
+        QueryMsg::Admin {} => to_json_binary(&query_admin(deps)?),
+        QueryMsg::Result { id } => to_json_binary(&query_result(deps, id)?),
     }
 }
 
@@ -208,7 +208,7 @@ pub fn query_result(deps: Deps, id: String) -> StdResult<ResultResponse> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
     use cosmwasm_std::{coins, BankMsg, BankQuery, SubMsg, WasmMsg};
     use simple_ica::{IbcQueryResponse, StdAck};
 
@@ -216,17 +216,17 @@ mod tests {
     fn send_message_enforces_permissions() {
         let mut deps = mock_dependencies();
 
-        let alice = "alice";
-        let bob = "bob";
-        let carl = "carl";
-        let ica = "simple_ica";
+        let alice = deps.api.addr_make("alice");
+        let bob = deps.api.addr_make("bob");
+        let carl = deps.api.addr_make("carl");
+        let ica = deps.api.addr_make("simple_ica");
         let channel = "channel-23";
 
         // instantiate the contract
         let instantiate_msg = InstantiateMsg {
             simple_ica_controller: ica.to_string(),
         };
-        let info = mock_info(alice, &[]);
+        let info = message_info(&alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
 
         // try to send without permissions
@@ -242,16 +242,16 @@ mod tests {
         };
 
         // bob cannot execute them
-        let info = mock_info(bob, &[]);
+        let info = message_info(&bob, &[]);
         let err = execute(deps.as_mut(), mock_env(), info, execute_msg.clone()).unwrap_err();
         assert_eq!(err, ContractError::Unauthorized {});
 
         // but alice can (original owner)
-        let info = mock_info(alice, &[]);
+        let info = message_info(&alice, &[]);
         let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
         let expected = vec![SubMsg::new(WasmMsg::Execute {
             contract_addr: ica.to_string(),
-            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::SendMsgs {
+            msg: to_json_binary(&simple_ica_controller::msg::ExecuteMsg::SendMsgs {
                 channel_id: channel.to_string(),
                 msgs,
                 callback_id: Some("test".to_string()),
@@ -266,9 +266,9 @@ mod tests {
     fn query_and_callback_work() {
         let mut deps = mock_dependencies();
 
-        let alice = "alice";
-        let bob = "bob";
-        let ica = "simple_ica";
+        let alice = deps.api.addr_make("alice");
+        let bob = deps.api.addr_make("bob");
+        let ica = deps.api.addr_make("simple_ica");
         let channel = "channel-23";
         let callback = "my-balance";
 
@@ -276,7 +276,7 @@ mod tests {
         let instantiate_msg = InstantiateMsg {
             simple_ica_controller: ica.to_string(),
         };
-        let info = mock_info(alice, &[]);
+        let info = message_info(&alice, &[]);
         instantiate(deps.as_mut(), mock_env(), info, instantiate_msg).unwrap();
 
         // try to send without permissions
@@ -292,11 +292,11 @@ mod tests {
         };
 
         // alice can execute
-        let info = mock_info(alice, &[]);
+        let info = message_info(&alice, &[]);
         let res = execute(deps.as_mut(), mock_env(), info, execute_msg).unwrap();
         let expected = vec![SubMsg::new(WasmMsg::Execute {
             contract_addr: ica.to_string(),
-            msg: to_binary(&simple_ica_controller::msg::ExecuteMsg::IbcQuery {
+            msg: to_json_binary(&simple_ica_controller::msg::ExecuteMsg::IbcQuery {
                 channel_id: channel.to_string(),
                 msgs: queries,
                 callback_id: Some(callback.to_string()),
@@ -308,12 +308,12 @@ mod tests {
 
         // we get a callback
         let ack = StdAck::Result(
-            to_binary(&IbcQueryResponse {
+            to_json_binary(&IbcQueryResponse {
                 results: vec![b"{}".into()],
             })
             .unwrap(),
         );
-        let info = mock_info(ica, &[]);
+        let info = message_info(&ica, &[]);
         let msg = ExecuteMsg::ReceiveIcaResponse(ReceiveIcaResponseMsg {
             id: callback.to_string(),
             msg: ack.clone(),
